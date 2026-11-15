@@ -182,3 +182,6 @@ td input, td select { min-height: 40px; padding: 6px 10px; }
 .notify-group h3 { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-top: 6px; }
 pre.email { white-space: pre-wrap; background: var(--bg); padding: 12px; border-radius: 8px; font-size: 14px; }
+
+#user-rows select { min-width: 110px; }
+#user-rows input[type="email"] { min-width: 200px; }

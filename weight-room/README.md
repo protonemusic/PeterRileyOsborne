@@ -1,6 +1,6 @@
 # Weight Room Sign-In
 
-A simple kiosk app for the weight room. Students sign up once, then sign in each visit by typing
+A simple kiosk app for the weight room. Everything requires a login. Students sign up once, then sign in each visit by typing
 their name and picking it from a list. An admin page shows who came in, and one **Notify Coaches**
 button emails each sport's coaches a list of their athletes who signed in.
 
@@ -9,7 +9,7 @@ button emails each sport's coaches a list of their athletes who signed in.
   - **Sign In:** type part of your name, tap it, tap **Sign In**. The sign-in time is saved.
     Students can change their sport here when seasons change. Signing in twice on the same day
     doesn't create a duplicate.
-- **Admin** (`/admin`, password protected):
+- **Admin** (`/admin`, staff and admins only):
   - **Sign-ins & Notify:** today's sign-ins (or any day), a preview of each coach's email,
     and the **Notify Coaches** button. Each sign-in is emailed only once, so you can press it
     daily, weekly, or whenever you like.
@@ -17,6 +17,20 @@ button emails each sport's coaches a list of their athletes who signed in.
     The kiosk only offers sports that are in season today. If none are, it offers all of them.
   - **Students:** fix names or sports, and remove students.
   - **Email History:** what was sent and to whom.
+  - **Users** (admins only): add people and choose their role. See below.
+  - **My Account:** change your password.
+
+## Accounts and roles
+
+| Role  | Can do |
+|-------|--------|
+| Admin | Everything, including adding, editing and removing users |
+| Staff | Everything except managing users |
+| Kiosk | Only the student sign-in screen. Use this for the iPad at the door. It stays logged in for 6 months. |
+
+The first admin account is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD` the first time the app
+starts. After that, those settings are ignored: add and manage everyone from the **Users** tab.
+Staff and admin logins last 14 days.
 
 ## Run it
 
@@ -25,7 +39,7 @@ Requires Node.js 22.13 or newer.
 ```bash
 cd weight-room
 npm install
-cp .env.example .env      # then set ADMIN_PASSWORD (and email settings)
+cp .env.example .env      # then set ADMIN_EMAIL, ADMIN_PASSWORD (and email settings)
 npm start                 # http://localhost:3000  and  http://localhost:3000/admin
 npm test
 ```
@@ -43,18 +57,28 @@ Any SMTP account works:
 - **School email or a sending service** (SendGrid, Mailgun, Postmark…): use the SMTP host,
   port, username and password they give you.
 
-## Hosting
+## Hosting on Render
 
-Any host that runs Node.js **and keeps files on a persistent disk** works, because the database
-is a file. Examples: Render (add a persistent disk and point `DATABASE_FILE` at it), Railway
-(with a volume), Fly.io (with a volume), or a small VPS. Set the variables from `.env.example`
-in the host's settings. Once it's on `https://`, set `SECURE_COOKIES=true`.
+The repo includes a `render.yaml` Blueprint, so you can set it up from a browser (an iPad works).
+
+1. Sign up at [render.com](https://render.com) and connect your GitHub account.
+2. Go to **New → Blueprint**, pick this repository, and pick the branch the app is on.
+3. Fill in the settings it asks for: `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` (your
+   admin login), plus the email settings (leave them blank for now if you like).
+4. Click **Apply**. After a few minutes your app is live at `https://weight-room-xxxx.onrender.com`.
+5. Log in there with your admin email and password.
+
+Cost: the database lives on a persistent disk, which needs Render's paid **Starter** instance
+(about $7/month plus $0.25/month for the 1 GB disk). Render's free tier would erase the data on
+every restart. Render backs up the disk daily.
+
+Any other host with a persistent disk works too (Railway, Fly.io, a VPS). Set the variables from
+`.env.example`, including `SECURE_COOKIES=true` and `TRUST_PROXY=true` behind https.
 
 On the iPad, open the site in Safari and use **Share → Add to Home Screen** for a full-screen kiosk.
 Use **Settings → Accessibility → Guided Access** to lock the iPad to the app.
 
 ## Privacy note
 
-The sign-in page lets anyone using the kiosk search student names. That's needed for type-ahead
-sign-in, but it means the kiosk URL should not be posted publicly. Everything else is behind the
-admin password.
+Nothing is visible without logging in. On the kiosk iPad, anyone at the door can search student
+names, because type-ahead sign-in needs that. A kiosk account can't open the admin page.

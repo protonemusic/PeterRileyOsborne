@@ -8,24 +8,13 @@
 </head>
 <body>
   <main class="wrap wide">
-    <!-- Login -->
-    <section id="login" class="card" style="max-width:420px;margin:60px auto" hidden>
-      <h1>Admin</h1>
-      <div id="login-msg" class="message" hidden></div>
-      <form id="login-form">
-        <div class="field">
-          <label for="password">Password</label>
-          <input id="password" type="password" autocomplete="current-password" required>
-        </div>
-        <button class="primary big" type="submit">Log In</button>
-      </form>
-      <p class="footer-link"><a href="/">Back to sign-in</a></p>
-    </section>
-
     <!-- Dashboard -->
-    <div id="dash" hidden>
+    <div id="dash">
       <div class="topbar">
-        <h1>Weight Room Admin</h1>
+        <div>
+          <h1>Weight Room Admin</h1>
+          <div class="muted small" id="whoami"></div>
+        </div>
         <div class="topbar-actions">
           <a href="/"><button type="button" tabindex="-1">Kiosk</button></a>
           <button type="button" id="logout">Log Out</button>
@@ -38,6 +27,8 @@
         <button role="tab" data-view="sports" aria-selected="false">Sports, Seasons &amp; Coaches</button>
         <button role="tab" data-view="students" aria-selected="false">Students</button>
         <button role="tab" data-view="history" aria-selected="false">Email History</button>
+        <button role="tab" data-view="users" aria-selected="false" hidden id="nav-users">Users</button>
+        <button role="tab" data-view="account" aria-selected="false">My Account</button>
       </nav>
 
       <!-- Sign-ins & notify -->
@@ -106,6 +97,58 @@
               <tbody id="history-rows"></tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <!-- Users (admins only) -->
+      <section data-panel="users" hidden>
+        <div class="card">
+          <h2>Add a User</h2>
+          <p class="muted small">
+            <strong>Admin:</strong> everything, including managing users.
+            <strong>Staff:</strong> everything except managing users.
+            <strong>Kiosk:</strong> only the student sign-in screen. Use this for the iPad at the door; it stays logged in for 6 months.
+          </p>
+          <form id="add-user-form" autocomplete="off">
+            <div class="row">
+              <div class="field"><label for="nu-name">Name</label><input id="nu-name" maxlength="80"></div>
+              <div class="field"><label for="nu-email">Email</label><input id="nu-email" type="email" required autocapitalize="off"></div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="nu-role">Role</label>
+                <select id="nu-role" required>
+                  <option value="staff">Staff</option>
+                  <option value="kiosk">Kiosk</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="field"><label for="nu-password">Password (8+ characters)</label><input id="nu-password" type="password" minlength="8" required autocomplete="new-password"></div>
+            </div>
+            <button class="primary" type="submit">Add User</button>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Users</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>New password</th><th></th></tr></thead>
+              <tbody id="user-rows"></tbody>
+            </table>
+          </div>
+          <p class="muted small">Leave "New password" blank to keep the current one. Changing a password or role logs that person out.</p>
+        </div>
+      </section>
+
+      <!-- Account -->
+      <section data-panel="account" hidden>
+        <div class="card" style="max-width:520px">
+          <h2>Change My Password</h2>
+          <form id="password-form">
+            <div class="field"><label for="pw-current">Current password</label><input id="pw-current" type="password" required autocomplete="current-password"></div>
+            <div class="field"><label for="pw-new">New password (8+ characters)</label><input id="pw-new" type="password" minlength="8" required autocomplete="new-password"></div>
+            <button class="primary" type="submit">Change Password</button>
+          </form>
         </div>
       </section>
     </div>

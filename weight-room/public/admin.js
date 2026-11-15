@@ -21,7 +21,7 @@ async function api(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && path !== '/api/admin/login') { showLogin(); throw new Error('Please log in'); }
+  if (res.status === 401) { location.replace('/login?next=/admin'); throw new Error('Please log in'); }
   if (!res.ok) throw new Error(data.error || 'Something went wrong');
   return data;
 }
@@ -41,35 +41,18 @@ async function act(fn) {
 let state = { sports: [], emailConfigured: false, today: '' };
 
 // ---------- auth ----------
-function showLogin() {
-  $('dash').hidden = true;
-  $('login').hidden = false;
-  $('password').focus();
-}
-
-$('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  try {
-    await api('/api/admin/login', { method: 'POST', body: { password: $('password').value } });
-    $('password').value = '';
-    showMessage($('login-msg'), '');
-    await start();
-  } catch (err) {
-    showMessage($('login-msg'), err.message);
-  }
-});
-
 $('logout').addEventListener('click', async () => {
-  await api('/api/admin/logout', { method: 'POST' }).catch(() => {});
-  showLogin();
+  await api('/api/logout', { method: 'POST' }).catch(() => {});
+  location.replace('/login');
 });
 
 async function start() {
   const me = await api('/api/admin/me');
   state.emailConfigured = me.emailConfigured;
   state.today = me.today;
-  $('login').hidden = true;
-  $('dash').hidden = false;
+  state.user = me.user;
+  $('whoami').textContent = `Logged in as ${me.user.name || me.user.email} (${me.user.role})`;
+  $('nav-users').hidden = me.user.role !== 'admin';
   if (!$('signin-date').value) $('signin-date').value = me.today;
   await loadSports();
   await showView(currentView);
@@ -82,6 +65,8 @@ const loaders = {
   sports: () => loadSports().then(renderSports),
   students: () => loadSports().then(loadStudents),
   history: loadHistory,
+  users: loadUsers,
+  account: async () => {},
 };
 
 async function showView(view) {
@@ -359,5 +344,60 @@ async function loadHistory() {
   }
 }
 
+// ---------- users ----------
+const ROLE_LABELS = { admin: 'Admin', staff: 'Staff', kiosk: 'Kiosk' };
+
+async function loadUsers() {
+  const { users } = await api('/api/admin/users');
+  const body = $('user-rows');
+  body.replaceChildren();
+  for (const u of users) {
+    const name = h('input', { value: u.name, maxLength: 80 });
+    const email = h('input', { type: 'email', value: u.email, autocapitalize: 'off' });
+    const role = h('select');
+    for (const [v, label] of Object.entries(ROLE_LABELS)) role.append(new Option(label, v, false, v === u.role));
+    const password = h('input', { type: 'password', placeholder: 'unchanged', autocomplete: 'new-password' });
+    const isMe = u.id === state.user.id;
+    body.append(h('tr', {},
+      h('td', {}, name), h('td', {}, email), h('td', {}, role), h('td', {}, password),
+      h('td', { className: 'actions' },
+        h('button', { className: 'link', onclick: () => act(async () => {
+          await api(`/api/admin/users/${u.id}`, {
+            method: 'PUT',
+            body: { name: name.value, email: email.value, role: role.value, password: password.value || undefined },
+          });
+          flash(`Saved ${name.value || email.value}.`, 'ok');
+          await loadUsers();
+        }) }, 'Save'),
+        isMe ? h('span', { className: 'pill' }, 'You') : h('button', { className: 'link danger', onclick: () => act(async () => {
+          if (!confirm(`Delete the account for ${u.name || u.email}?`)) return;
+          await api(`/api/admin/users/${u.id}`, { method: 'DELETE' });
+          await loadUsers();
+        }) }, 'Delete')),
+    ));
+  }
+}
+
+$('add-user-form').addEventListener('submit', (e) => act(async () => {
+  e.preventDefault();
+  await api('/api/admin/users', {
+    method: 'POST',
+    body: { name: $('nu-name').value, email: $('nu-email').value, role: $('nu-role').value, password: $('nu-password').value },
+  });
+  flash(`Added ${$('nu-name').value || $('nu-email').value}.`, 'ok');
+  e.target.reset();
+  await loadUsers();
+}));
+
+// ---------- my account ----------
+$('password-form').addEventListener('submit', (e) => act(async () => {
+  e.preventDefault();
+  await api('/api/me/password', {
+    method: 'PUT', body: { currentPassword: $('pw-current').value, newPassword: $('pw-new').value },
+  });
+  e.target.reset();
+  flash('Password changed. Any other devices using your account have been logged out.', 'ok');
+}));
+
 // ---------- boot ----------
-api('/api/admin/me').then(start).catch(() => {});
+act(start);

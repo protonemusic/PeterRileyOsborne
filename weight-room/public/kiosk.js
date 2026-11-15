@@ -9,6 +9,10 @@ async function api(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    location.replace('/login?next=/');
+    throw new Error('Please log in');
+  }
   if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
   return data;
 }

@@ -5,9 +5,11 @@ const path = require('node:path');
 const express = require('express');
 const { tx } = require('./db');
 const { localDate, formatTime, formatDay, isValidDate } = require('./time');
+const users = require('./users');
 
-const COOKIE = 'wr_admin';
-const SESSION_HOURS = 12;
+const COOKIE = 'wr_session';
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -42,6 +44,7 @@ function createApp({ db, mailer, config }) {
   const today = () => localDate(now(), tz);
   const app = express();
   app.disable('x-powered-by');
+  if (config.trustProxy) app.set('trust proxy', 1);
   app.use(express.json({ limit: '50kb' }));
 
   // ---------- helpers ----------
@@ -60,25 +63,8 @@ function createApp({ db, mailer, config }) {
       ORDER BY s.name COLLATE NOCASE`).all(today(), today());
   }
 
-  // ---------- admin session ----------
-  const secret = crypto.createHash('sha256')
-    .update(`${config.sessionSecret || ''}:${config.adminPassword}`).digest();
-  const sign = (data) => crypto.createHmac('sha256', secret).update(data).digest('base64url');
-
-  function makeToken() {
-    const exp = String(now().getTime() + SESSION_HOURS * 3600 * 1000);
-    return `${exp}.${sign(exp)}`;
-  }
-
-  function validToken(token) {
-    if (!token) return false;
-    const [exp, sig] = token.split('.');
-    if (!exp || !sig) return false;
-    const expected = Buffer.from(sign(exp));
-    const given = Buffer.from(sig);
-    if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return false;
-    return Number(exp) > now().getTime();
-  }
+  // ---------- sessions ----------
+  const hashToken = (token) => crypto.createHash('sha256').update(token).digest('base64url');
 
   function readCookie(req, name) {
     for (const part of (req.headers.cookie || '').split(';')) {
@@ -90,29 +76,119 @@ function createApp({ db, mailer, config }) {
 
   function cookieHeader(value, maxAgeSec) {
     const secure = config.secureCookies ? '; Secure' : '';
-    return `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSec}${secure}`;
+    return `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
   }
 
-  function requireAdmin(req, _res, next) {
-    if (!validToken(readCookie(req, COOKIE))) return next(new HttpError(401, 'Please log in'));
+  function startSession(res, user) {
+    const token = crypto.randomBytes(32).toString('base64url');
+    const days = users.SESSION_DAYS[user.role];
+    const expires = new Date(now().getTime() + days * 86400 * 1000).toISOString();
+    db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now().toISOString());
+    db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+      .run(hashToken(token), user.id, expires);
+    res.setHeader('Set-Cookie', cookieHeader(token, days * 86400));
+  }
+
+  /** Attach req.user (or null) from the session cookie. */
+  app.use((req, _res, next) => {
+    const token = readCookie(req, COOKIE);
+    req.user = null;
+    if (token) {
+      req.tokenHash = hashToken(token);
+      req.user = db.prepare(`SELECT u.id, u.email, u.name, u.role FROM sessions s
+        JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`)
+        .get(req.tokenHash, now().toISOString()) || null;
+    }
     next();
+  });
+
+  const STAFF = ['admin', 'staff'];
+  const ANYONE = ['admin', 'staff', 'kiosk'];
+  const requireRole = (roles) => (req, _res, next) => {
+    if (!req.user) return next(new HttpError(401, 'Please log in'));
+    if (!roles.includes(req.user.role)) return next(new HttpError(403, "Your account doesn't have access to this"));
+    next();
+  };
+
+  // Simple in-memory brake on password guessing, per IP address.
+  const failures = new Map();
+  function checkLoginRate(ip) {
+    const f = failures.get(ip);
+    if (f && now().getTime() - f.first > LOGIN_WINDOW_MS) failures.delete(ip);
+    if ((failures.get(ip)?.count || 0) >= LOGIN_MAX_FAILURES) {
+      throw new HttpError(429, 'Too many failed logins. Please wait 15 minutes and try again.');
+    }
+  }
+  function recordFailure(ip) {
+    const f = failures.get(ip) || { count: 0, first: now().getTime() };
+    f.count += 1;
+    failures.set(ip, f);
   }
 
-  function passwordMatches(given) {
-    const a = crypto.createHash('sha256').update(String(given ?? '')).digest();
-    const b = crypto.createHash('sha256').update(config.adminPassword).digest();
-    return crypto.timingSafeEqual(a, b);
+  const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name, role: u.role });
+
+  // ---------- auth API (public) ----------
+  app.post('/api/login', async (req, res) => {
+    checkLoginRate(req.ip);
+    const email = users.normalizeEmail(req.body?.email);
+    const user = db.prepare('SELECT id, email, name, role, password_hash FROM users WHERE email = ?').get(email);
+    const ok = await users.verifyPassword(req.body?.password, user?.password_hash);
+    if (!user || !ok) {
+      recordFailure(req.ip);
+      throw new HttpError(401, 'Wrong email or password');
+    }
+    failures.delete(req.ip);
+    startSession(res, user);
+    res.json({ user: publicUser(user) });
+  });
+
+  app.post('/api/logout', (req, res) => {
+    if (req.tokenHash) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(req.tokenHash);
+    res.setHeader('Set-Cookie', cookieHeader('', 0));
+    res.json({ ok: true });
+  });
+
+  app.get('/api/me', requireRole(ANYONE), (req, res) => {
+    res.json({ user: publicUser(req.user) });
+  });
+
+  app.put('/api/me/password', requireRole(ANYONE), async (req, res) => {
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!(await users.verifyPassword(req.body?.currentPassword, row.password_hash))) {
+      throw bad('Your current password is not right');
+    }
+    const password = checkPassword(req.body?.newPassword);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await users.hashPassword(password), req.user.id);
+    // Log out everywhere else.
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?').run(req.user.id, req.tokenHash);
+    res.json({ ok: true });
+  });
+
+  function checkPassword(p) {
+    if (typeof p !== 'string' || p.length < users.MIN_PASSWORD) {
+      throw bad(`Password must be at least ${users.MIN_PASSWORD} characters`);
+    }
+    if (p.length > 200) throw bad('Password is too long');
+    return p;
   }
 
-  // ---------- kiosk (public) API ----------
-  app.get('/api/sports', (_req, res) => {
+  // ---------- admin API (staff + admin) ----------
+  const admin = express.Router();
+  admin.use(requireRole(STAFF));
+  app.use('/api/admin', admin);
+
+  // ---------- kiosk API (any logged-in account) ----------
+  const kiosk = express.Router();
+  kiosk.use(requireRole(ANYONE));
+
+  kiosk.get('/sports', (_req, res) => {
     const active = inSeasonSports();
     if (active.length) return res.json({ sports: active, inSeasonOnly: true });
     const all = db.prepare('SELECT id, name FROM sports ORDER BY name COLLATE NOCASE').all();
     res.json({ sports: all, inSeasonOnly: false });
   });
 
-  app.get('/api/students/search', (req, res) => {
+  kiosk.get('/students/search', (req, res) => {
     const q = String(req.query.q || '').trim().replace(/\s+/g, ' ');
     if (!q) return res.json({ students: [] });
     const like = `${escapeLike(q)}%`;
@@ -128,7 +204,7 @@ function createApp({ db, mailer, config }) {
     res.json({ students });
   });
 
-  app.post('/api/signup', (req, res) => {
+  kiosk.post('/signup', (req, res) => {
     const firstName = cleanName(req.body?.firstName, 'First name');
     const lastName = cleanName(req.body?.lastName, 'Last name');
     const sport = requireSport(req.body?.sportId);
@@ -144,7 +220,7 @@ function createApp({ db, mailer, config }) {
     });
   });
 
-  app.post('/api/signin', (req, res) => {
+  kiosk.post('/signin', (req, res) => {
     const studentId = toId(req.body?.studentId, 'student');
     const student = db.prepare('SELECT id, first_name, last_name, sport_id FROM students WHERE id = ?').get(studentId);
     if (!student) throw notFound('Student');
@@ -171,24 +247,8 @@ function createApp({ db, mailer, config }) {
     res.status(201).json({ alreadySignedIn: false, name, time: formatTime(signedInAt, tz) });
   });
 
-  // ---------- admin API ----------
-  app.post('/api/admin/login', (req, res) => {
-    if (!passwordMatches(req.body?.password)) throw new HttpError(401, 'Wrong password');
-    res.setHeader('Set-Cookie', cookieHeader(makeToken(), SESSION_HOURS * 3600));
-    res.json({ ok: true });
-  });
-
-  app.post('/api/admin/logout', (_req, res) => {
-    res.setHeader('Set-Cookie', cookieHeader('', 0));
-    res.json({ ok: true });
-  });
-
-  const admin = express.Router();
-  admin.use(requireAdmin);
-  app.use('/api/admin', admin);
-
-  admin.get('/me', (_req, res) => {
-    res.json({ ok: true, emailConfigured: mailer.configured, today: today(), timeZone: tz });
+  admin.get('/me', (req, res) => {
+    res.json({ user: publicUser(req.user), emailConfigured: mailer.configured, today: today(), timeZone: tz });
   });
 
   // Sports, with their seasons and coaches
@@ -445,12 +505,81 @@ function createApp({ db, mailer, config }) {
     });
   });
 
-  // ---------- pages ----------
-  const pub = path.join(__dirname, '..', 'public');
-  app.get('/admin', (_req, res) => res.sendFile(path.join(pub, 'admin.html')));
-  app.use(express.static(pub));
+  // ---------- user accounts (admin only) ----------
+  const adminOnly = requireRole(['admin']);
+  const adminCount = () => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
 
+  function userFields(body, { requirePassword }) {
+    const email = users.normalizeEmail(body?.email);
+    if (!users.isValidEmail(email)) throw bad('Please enter a valid email address');
+    const name = typeof body?.name === 'string' ? body.name.trim().slice(0, 80) : '';
+    const role = body?.role;
+    if (!users.ROLES.includes(role)) throw bad('Please choose a role');
+    const password = body?.password ? checkPassword(body.password) : null;
+    if (requirePassword && !password) throw bad(`Password must be at least ${users.MIN_PASSWORD} characters`);
+    return { email, name, role, password };
+  }
+
+  admin.get('/users', adminOnly, (_req, res) => {
+    const rows = db.prepare(`SELECT id, email, name, role, created_at AS createdAt FROM users
+      ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'staff' THEN 1 ELSE 2 END, name COLLATE NOCASE, email`).all();
+    res.json({ users: rows });
+  });
+
+  admin.post('/users', adminOnly, async (req, res) => {
+    const f = userFields(req.body, { requirePassword: true });
+    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(f.email)) throw bad(`${f.email} already has an account`);
+    const id = await users.createUser(db, f);
+    res.status(201).json({ user: { id, email: f.email, name: f.name, role: f.role } });
+  });
+
+  admin.put('/users/:id', adminOnly, async (req, res) => {
+    const id = toId(req.params.id);
+    const existing = db.prepare('SELECT id, role FROM users WHERE id = ?').get(id);
+    if (!existing) throw notFound('User');
+    const f = userFields(req.body, { requirePassword: false });
+    if (db.prepare('SELECT 1 FROM users WHERE email = ? AND id <> ?').get(f.email, id)) {
+      throw bad(`${f.email} already has an account`);
+    }
+    if (existing.role === 'admin' && f.role !== 'admin' && adminCount() === 1) {
+      throw bad('There must be at least one admin');
+    }
+    db.prepare('UPDATE users SET email = ?, name = ?, role = ? WHERE id = ?').run(f.email, f.name, f.role, id);
+    if (f.password) {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await users.hashPassword(f.password), id);
+    }
+    if (f.password || f.role !== existing.role) {
+      // Force a fresh login with the new password or role (but keep the current admin's own session).
+      db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?').run(id, req.tokenHash);
+    }
+    res.json({ ok: true });
+  });
+
+  admin.delete('/users/:id', adminOnly, (req, res) => {
+    const id = toId(req.params.id);
+    if (id === req.user.id) throw bad("You can't delete your own account");
+    if (db.prepare('DELETE FROM users WHERE id = ?').run(id).changes === 0) throw notFound('User');
+    res.json({ ok: true });
+  });
+
+  app.use('/api', kiosk);
   app.use('/api', (_req, _res, next) => next(notFound('Endpoint')));
+
+  // ---------- pages ----------
+  const views = path.join(__dirname, '..', 'views');
+  const page = (file, roles) => (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!roles) return res.sendFile(path.join(views, file));
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+    }
+    res.sendFile(path.join(views, file));
+  };
+  app.get('/healthz', (_req, res) => res.json({ ok: true }));
+  app.get('/login', page('login.html'));
+  app.get('/', page('index.html', ANYONE));
+  app.get('/admin', page('admin.html', STAFF));
+  app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {

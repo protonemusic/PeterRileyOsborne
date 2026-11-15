@@ -313,6 +313,7 @@ test('season validation', async () => {
     assert.equal(r.status, 400);
     assert.equal((await t.call('POST', `/api/admin/sports/${football.id}/seasons`, { startDate: '2026-02-30', endDate: '2026-03-01' })).status, 400);
     assert.equal((await t.call('POST', `/api/admin/sports/${football.id}/coaches`, { email: 'not-an-email' })).status, 400);
+    assert.equal((await t.call('POST', `/api/admin/sports/${football.id}/coaches`, {})).status, 400);
   } finally { await t.close(); }
 });
 
@@ -326,3 +327,42 @@ test('first admin is created from settings only when there are no users', async 
   assert.equal(db.prepare('SELECT email, role FROM users').get().email, 'a@b.org');
 });
 
+
+test('import endpoint, coaches without email, and editing a coach', async () => {
+  const t = await setup();
+  try {
+    const { football } = await seed(t); // Football has Coach Smith with an email
+    const seasons = {
+      fall: { label: 'Fall 2026', startDate: '2026-08-17', endDate: '2026-11-30' },
+      winter: { label: 'Winter', startDate: '2026-12-01', endDate: '2027-03-01' },
+    };
+    assert.equal((await t.call('POST', '/api/admin/import', { text: 'WINTER\nWrestling', seasons: {} })).status, 400);
+    const text = 'FALL\nFootball\nHead Coach: Chase Beach\nGirls Soccer\nHead Coach: Colin Hay\nWINTER\nWrestling\nHead Coach: Pete Machacek';
+    const preview = (await t.call('POST', '/api/admin/import', { text, seasons, dryRun: true })).body;
+    assert.equal(preview.dryRun, true);
+    assert.equal((await t.call('GET', '/api/admin/sports')).body.sports.length, 2);
+    const r = await t.call('POST', '/api/admin/import', { text, seasons });
+    assert.equal(r.status, 200);
+    const sports = (await t.call('GET', '/api/admin/sports')).body.sports;
+    assert.deepEqual(sports.map((s) => s.name), ['Football', 'Girls Soccer', 'Track', 'Wrestling']);
+
+    // Students sign in to Girls Soccer, which has a coach but no email yet.
+    const soccer = sports.find((s) => s.name === 'Girls Soccer');
+    const st = (await t.call('POST', '/api/signup', { firstName: 'Ana', lastName: 'Ruiz', sportId: soccer.id })).body.student;
+    await t.call('POST', '/api/signin', { studentId: st.id });
+    const fb = (await t.call('POST', '/api/signup', { firstName: 'Bo', lastName: 'Diaz', sportId: football.id })).body.student;
+    await t.call('POST', '/api/signin', { studentId: fb.id });
+
+    let results = (await t.call('POST', '/api/admin/notify')).body.results;
+    assert.deepEqual(results.map((x) => [x.sportName, x.status]), [['Football', 'sent'], ['Girls Soccer', 'skipped']]);
+    assert.equal(results[1].reason, 'No coach email addresses on file');
+    assert.deepEqual(t.sent[0].to, ['"Coach Smith" <smith@school.org>']); // Chase Beach has no email yet
+
+    // Add the email, then the pending Girls Soccer sign-in goes out.
+    const hay = soccer.coaches[0];
+    assert.equal((await t.call('PUT', `/api/admin/coaches/${hay.id}`, { name: 'Colin Hay', email: 'Hay@School.org' })).status, 200);
+    results = (await t.call('POST', '/api/admin/notify')).body.results;
+    assert.deepEqual(results.map((x) => [x.sportName, x.status]), [['Girls Soccer', 'sent']]);
+    assert.deepEqual(t.sent[1].to, ['"Colin Hay" <hay@school.org>']);
+  } finally { await t.close(); }
+});

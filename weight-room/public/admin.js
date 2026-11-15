@@ -107,16 +107,23 @@ async function loadPreview() {
     return;
   }
   for (const g of groups) {
-    const coaches = g.coaches.length
-      ? g.coaches.map((c) => (c.name ? `${c.name} <${c.email}>` : c.email)).join(', ')
+    const withEmail = g.coaches.filter((c) => c.email);
+    const noEmail = g.coaches.filter((c) => !c.email);
+    const coaches = withEmail.length
+      ? withEmail.map((c) => (c.name ? `${c.name} <${c.email}>` : c.email)).join(', ')
       : null;
     box.append(h('div', { className: 'notify-group' },
       h('h3', {}, h('span', {}, g.sportName), h('span', { className: 'pill' }, `${g.signIns.length} sign-in${g.signIns.length === 1 ? '' : 's'}`)),
       coaches
         ? h('div', { className: 'small' }, h('span', { className: 'muted' }, 'To: '), coaches)
-        : h('div', { className: 'small', style: 'color:var(--warn)' }, g.sportId
-          ? 'No coaches on file for this sport. Add one under Sports, Seasons & Coaches.'
-          : 'These sign-ins have no sport, so there is no one to email.'),
+        : h('div', { className: 'small', style: 'color:var(--warn)' }, !g.sportId
+          ? 'These sign-ins have no sport, so there is no one to email.'
+          : g.coaches.length
+            ? 'No coach email addresses on file for this sport. Add one under Sports, Seasons & Coaches.'
+            : 'No coaches on file for this sport. Add one under Sports, Seasons & Coaches.'),
+      coaches && noEmail.length
+        ? h('div', { className: 'small', style: 'color:var(--warn)' }, `Not emailed (no address on file): ${noEmail.map((c) => c.name).join(', ')}`)
+        : null,
       h('details', {}, h('summary', {}, 'Preview email'),
         h('p', { className: 'small' }, h('strong', {}, 'Subject: '), g.email.subject),
         h('pre', { className: 'email' }, g.email.text)),
@@ -210,9 +217,11 @@ function renderSports() {
     const seasonStart = h('input', { type: 'date', required: true, title: 'Start date' });
     const seasonEnd = h('input', { type: 'date', required: true, title: 'End date' });
     const coachName = h('input', { placeholder: 'Coach name' , maxLength: 80 });
-    const coachEmail = h('input', { type: 'email', placeholder: 'coach@school.org', required: true });
+    const coachEmail = h('input', { type: 'email', placeholder: 'coach@school.org (optional)' });
 
-    const coachCount = `${sport.coaches.length} coach${sport.coaches.length === 1 ? '' : 'es'}`;
+    const missingEmail = sport.coaches.filter((c) => !c.email).length;
+    const coachCount = `${sport.coaches.length} coach${sport.coaches.length === 1 ? '' : 'es'}`
+      + (missingEmail ? ` · ${missingEmail} need${missingEmail === 1 ? 's' : ''} email` : '');
     const details = h('details', {
       className: 'sport',
       open: expandedSports.has(sport.id),
@@ -286,12 +295,23 @@ function renderSports() {
       h('div', { className: 'sub' }, 'Coaches'),
       sport.coaches.length
         ? h('ul', { className: 'list' }, sport.coaches.map((c) => h('li', {},
-          h('span', {}, c.name ? h('strong', {}, `${c.name} `) : null, h('span', { className: 'muted' }, c.email)),
-          h('button', { className: 'link danger', onclick: () => act(async () => {
-            if (!confirm(`Remove ${c.name || c.email}?`)) return;
-            await api(`/api/admin/coaches/${c.id}`, { method: 'DELETE' });
-            await refresh();
-          }) }, 'Remove'),
+          h('span', {},
+            c.name ? h('strong', {}, `${c.name} `) : null,
+            c.email ? h('span', { className: 'muted' }, c.email) : h('span', { className: 'pill warn' }, 'No email')),
+          h('span', {},
+            h('button', { className: 'link', onclick: () => act(async () => {
+              const name = prompt('Coach name', c.name);
+              if (name === null) return;
+              const email = prompt(`Email for ${name || 'this coach'}`, c.email);
+              if (email === null) return;
+              await api(`/api/admin/coaches/${c.id}`, { method: 'PUT', body: { name, email } });
+              await refresh();
+            }) }, c.email ? 'Edit' : 'Add Email'),
+            h('button', { className: 'link danger', onclick: () => act(async () => {
+              if (!confirm(`Remove ${c.name || c.email}?`)) return;
+              await api(`/api/admin/coaches/${c.id}`, { method: 'DELETE' });
+              await refresh();
+            }) }, 'Remove')),
         )))
         : h('p', { className: 'muted small' }, 'No coaches yet. Add one so they get sign-in emails.'),
       h('form', {
@@ -364,6 +384,64 @@ async function loadHistory() {
     body.append(h('tr', {}, h('td', {}, n.when), h('td', {}, n.sportName), h('td', {}, String(n.count)), h('td', { className: 'small' }, n.recipients)));
   }
 }
+
+// ---------- import ----------
+// Default season dates for the current school year (July–June); adjust them on the page.
+(function fillDefaultSeasons() {
+  const now = new Date();
+  const y = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  const defaults = {
+    fall: [`Fall ${y}`, `${y}-08-17`, `${y}-11-15`],
+    winter: [`Winter ${y}–${String(y + 1).slice(2)}`, `${y}-11-16`, `${y + 1}-03-01`],
+    spring: [`Spring ${y + 1}`, `${y + 1}-03-02`, `${y + 1}-06-06`],
+  };
+  for (const [key, [label, start, end]] of Object.entries(defaults)) {
+    $(`imp-${key}-label`).value = label;
+    $(`imp-${key}-start`).value = start;
+    $(`imp-${key}-end`).value = end;
+  }
+})();
+
+function importBody(dryRun) {
+  const seasons = {};
+  for (const key of ['fall', 'winter', 'spring']) {
+    seasons[key] = { label: $(`imp-${key}-label`).value, startDate: $(`imp-${key}-start`).value, endDate: $(`imp-${key}-end`).value };
+  }
+  return { text: $('import-text').value, seasons, dryRun };
+}
+
+function renderImportResult({ dryRun, warnings, sports }) {
+  const box = $('import-result');
+  box.replaceChildren();
+  const added = (r) => r.sportAdded || r.seasonsAdded.length || r.coachesAdded.length || r.coachesUpdated.length;
+  const changes = sports.filter(added);
+  box.append(h('p', {}, h('strong', {}, dryRun
+    ? (changes.length ? `Preview: ${changes.length} of ${sports.length} sports will change. Nothing has been saved yet.` : 'Everything in this list is already in the app. Nothing to import.')
+    : `Imported. ${changes.length} of ${sports.length} sports changed.`)));
+  for (const w of warnings) box.append(h('div', { className: 'small', style: 'color:var(--warn)' }, w));
+  const rows = sports.map((r) => h('tr', {},
+    h('td', {}, r.name, r.sportAdded ? h('span', { className: 'pill ok', style: 'margin-left:6px' }, 'New') : null),
+    h('td', { className: 'small' }, r.seasonsAdded.join(', ') || '—'),
+    h('td', { className: 'small' }, [...r.coachesAdded, ...r.coachesUpdated.map((n) => `${n} (email added)`)].join(', ') || '—'),
+  ));
+  box.append(h('div', { className: 'table-wrap' }, h('table', {},
+    h('thead', {}, h('tr', {}, h('th', {}, 'Sport'), h('th', {}, dryRun ? 'Seasons to add' : 'Seasons added'), h('th', {}, dryRun ? 'Coaches to add' : 'Coaches added'))),
+    h('tbody', {}, rows))));
+  $('import-run').disabled = !(dryRun && changes.length);
+}
+
+$('import-preview').addEventListener('click', () => act(async () => {
+  renderImportResult(await api('/api/admin/import', { method: 'POST', body: importBody(true) }));
+}));
+// Any change after a preview means it has to be previewed again.
+$('import-card').addEventListener('input', () => { $('import-run').disabled = true; });
+$('import-run').addEventListener('click', () => act(async () => {
+  const result = await api('/api/admin/import', { method: 'POST', body: importBody(false) });
+  renderImportResult(result);
+  $('import-run').disabled = true;
+  await loadSports();
+  renderSports();
+}));
 
 // ---------- users ----------
 const ROLE_LABELS = { admin: 'Admin', staff: 'Staff', kiosk: 'Kiosk' };

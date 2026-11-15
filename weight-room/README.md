@@ -13,7 +13,11 @@ button emails each sport's coaches a list of their athletes who signed in.
   - **Sign-ins & Notify:** today's sign-ins (or any day), a preview of each coach's email,
     and the **Notify Coaches** button. Each sign-in is emailed only once, so you can press it
     daily, weekly, or whenever you like.
-  - **Sports, Seasons & Coaches:** add sports, give each one season dates, and add coach emails.
+  - **Sports, Seasons & Coaches:** add sports, give each one season dates, and add coaches.
+    Tap a sport to expand it. **Import Sports & Coaches** at the bottom takes a pasted list
+    (season headings, sports, "Head Coach:" lines) and adds everything at once without duplicates.
+    A coach's email is optional at first; coaches without one show **No email** and aren't emailed
+    until you add it.
     The kiosk only offers sports that are in season today. If none are, it offers all of them.
   - **Students:** fix names or sports, and remove students.
   - **Email History:** what was sent and to whom.

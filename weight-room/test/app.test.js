@@ -10,6 +10,7 @@ const { createUser } = require('../src/users');
 async function setup({ emailConfigured = true, failFor = [] } = {}) {
   const db = openDb(':memory:');
   await createUser(db, { email: 'admin@test.org', name: 'Ada Admin', role: 'admin', password: 'admin-pass' });
+  await createUser(db, { email: 'staff@test.org', name: 'Sam Staff', role: 'staff', password: 'staff-pass' });
   await createUser(db, { email: 'kiosk@test.org', name: 'Door iPad', role: 'kiosk', password: 'kiosk-pass' });
   const sent = [];
   const mailer = {
@@ -109,6 +110,19 @@ test('kiosk accounts only reach the sign-in screen', async () => {
   } finally { await t.close(); }
 });
 
+test('staff can run the admin page but not manage users', async () => {
+  const t = await setup();
+  try {
+    await t.login('staff');
+    assert.equal((await t.page('/admin')).status, 200);
+    assert.equal((await t.page('/')).status, 200);
+    assert.equal((await t.call('GET', '/api/admin/sports')).status, 200);
+    assert.equal((await t.call('GET', '/api/admin/notify/preview')).status, 200);
+    assert.equal((await t.call('GET', '/api/admin/users')).status, 403);
+    assert.equal((await t.call('POST', '/api/admin/users', { email: 'x@test.org', role: 'admin', password: '12345678' })).status, 403);
+  } finally { await t.close(); }
+});
+
 test('admins manage users', async () => {
   const t = await setup();
   try {
@@ -119,11 +133,12 @@ test('admins manage users', async () => {
     assert.equal(r.body.user.email, 'two@test.org');
     assert.equal((await t.call('POST', '/api/admin/users', { email: 'two@test.org', role: 'kiosk', password: 'xxxxxxxx' })).status, 400);
     assert.equal((await t.call('POST', '/api/admin/users', { email: 'short@test.org', role: 'kiosk', password: 'short' })).status, 400);
-    assert.equal((await t.call('POST', '/api/admin/users', { email: 'staff@test.org', role: 'staff', password: 'xxxxxxxx' })).status, 400);
+    assert.equal((await t.call('POST', '/api/admin/users', { email: 'staff@test.org', role: 'staff', password: 'xxxxxxxx' })).status, 400); // email taken
+    assert.equal((await t.call('POST', '/api/admin/users', { email: 'boss@test.org', role: 'boss', password: 'xxxxxxxx' })).status, 400);
     assert.equal((await t.call('POST', '/api/admin/users', { email: 'role@test.org', role: 'boss', password: 'xxxxxxxx' })).status, 400);
 
     const list = (await t.call('GET', '/api/admin/users')).body.users;
-    assert.deepEqual(list.map((u) => u.role), ['admin', 'admin', 'kiosk']);
+    assert.deepEqual(list.map((u) => u.role), ['admin', 'admin', 'staff', 'kiosk']);
     assert.ok(list.every((u) => !('password_hash' in u)));
 
     // can't remove the last admin or delete yourself
@@ -311,16 +326,3 @@ test('first admin is created from settings only when there are no users', async 
   assert.equal(db.prepare('SELECT email, role FROM users').get().email, 'a@b.org');
 });
 
-test('old staff accounts become kiosk accounts', async () => {
-  const fs = require('node:fs');
-  const os = require('node:os');
-  const path = require('node:path');
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wr-')), 'db.sqlite');
-  let db = openDb(file);
-  db.prepare(`INSERT INTO users (email, name, role, password_hash, created_at)
-    VALUES ('old@test.org', '', 'staff', 'x', '2026-01-01')`).run();
-  db.close();
-  db = openDb(file);
-  assert.equal(db.prepare("SELECT role FROM users WHERE email = 'old@test.org'").get().role, 'kiosk');
-  db.close();
-});

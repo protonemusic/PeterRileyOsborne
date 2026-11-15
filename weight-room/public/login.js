@@ -12,7 +12,7 @@ function nextPath(role) {
 }
 
 if (new URLSearchParams(location.search).get('next') === '/admin') {
-  msg.textContent = 'Log in with an admin account to open the admin page.';
+  msg.textContent = 'Log in with a staff or admin account to open the admin page.';
   msg.className = 'message warn';
   msg.hidden = false;
 }

@@ -366,7 +366,7 @@ async function loadHistory() {
 }
 
 // ---------- users ----------
-const ROLE_LABELS = { admin: 'Admin', kiosk: 'Kiosk' };
+const ROLE_LABELS = { admin: 'Admin', staff: 'Staff', kiosk: 'Kiosk' };
 
 async function loadUsers() {
   const { users } = await api('/api/admin/users');

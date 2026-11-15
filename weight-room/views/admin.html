@@ -105,9 +105,10 @@
         <div class="card">
           <h2>Add a User</h2>
           <p class="muted small">
-            <strong>Admin:</strong> everything: the admin page, including managing users, plus the sign-in screen.
-            <strong>Kiosk:</strong> only the student sign-in screen. Use this for the iPad at the door; it stays logged in for 6 months.
-            Only admins see the Admin link or can open this page.
+            <strong>Admin:</strong> everything, including managing users.
+            <strong>Staff:</strong> everything except managing users.
+            <strong>Kiosk:</strong> only the student sign-in screen. Use this for the iPad at the door; it stays logged in for 6 months
+            and never sees the Admin link.
           </p>
           <form id="add-user-form" autocomplete="off">
             <div class="row">
@@ -118,6 +119,7 @@
               <div class="field">
                 <label for="nu-role">Role</label>
                 <select id="nu-role" required>
+                  <option value="staff">Staff</option>
                   <option value="kiosk">Kiosk</option>
                   <option value="admin">Admin</option>
                 </select>

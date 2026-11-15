@@ -6,11 +6,11 @@ const { promisify } = require('node:util');
 const scrypt = promisify(crypto.scrypt);
 const KEYLEN = 64;
 
-const ROLES = ['admin', 'kiosk'];
+const ROLES = ['admin', 'staff', 'kiosk'];
 const MIN_PASSWORD = 8;
 
 /** Session length by role. Kiosk iPads stay logged in for a long time. */
-const SESSION_DAYS = { admin: 14, kiosk: 180 };
+const SESSION_DAYS = { admin: 14, staff: 14, kiosk: 180 };
 
 async function hashPassword(password) {
   const salt = crypto.randomBytes(16);

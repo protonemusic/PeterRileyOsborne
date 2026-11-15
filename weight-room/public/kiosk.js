@@ -215,12 +215,12 @@ function finish() {
   showPanel('signin');
   loadSports();
 
-// The Admin link only appears for admins.
-api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role !== 'admin'; }).catch(() => {});
+// The Admin link only appears for staff and admins, never on a kiosk (student) account.
+api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role === 'kiosk'; }).catch(() => {});
 }
 $('success-done').addEventListener('click', finish);
 
 loadSports();
 
-// The Admin link only appears for admins.
-api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role !== 'admin'; }).catch(() => {});
+// The Admin link only appears for staff and admins, never on a kiosk (student) account.
+api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role === 'kiosk'; }).catch(() => {});

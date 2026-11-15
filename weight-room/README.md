@@ -9,7 +9,7 @@ button emails each sport's coaches a list of their athletes who signed in.
   - **Sign In:** type part of your name, tap it, tap **Sign In**. The sign-in time is saved.
     Students can change their sport here when seasons change. Signing in twice on the same day
     doesn't create a duplicate.
-- **Admin** (`/admin`, admins only; the Admin link only shows for admins):
+- **Admin** (`/admin`, staff and admins only; kiosk accounts never see the Admin link):
   - **Sign-ins & Notify:** today's sign-ins (or any day), a preview of each coach's email,
     and the **Notify Coaches** button. Each sign-in is emailed only once, so you can press it
     daily, weekly, or whenever you like.
@@ -24,12 +24,13 @@ button emails each sport's coaches a list of their athletes who signed in.
 
 | Role  | Can do |
 |-------|--------|
-| Admin | Everything: the admin page (including managing users) and the sign-in screen |
+| Admin | Everything, including adding, editing and removing users |
+| Staff | Everything except managing users |
 | Kiosk | Only the student sign-in screen. Use this for the iPad at the door. It stays logged in for 6 months. |
 
 The first admin account is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD` the first time the app
 starts. After that, those settings are ignored: add and manage everyone from the **Users** tab.
-Admin logins last 14 days.
+Staff and admin logins last 14 days.
 
 ## Run it
 
@@ -84,4 +85,4 @@ Use **Settings → Accessibility → Guided Access** to lock the iPad to the app
 ## Privacy note
 
 Nothing is visible without logging in. On the kiosk iPad, anyone at the door can search student
-names, because type-ahead sign-in needs that. Only admin accounts can see the Admin link or open the admin page.
+names, because type-ahead sign-in needs that. Kiosk accounts can't see the Admin link or open the admin page.

@@ -102,8 +102,8 @@ function createApp({ db, mailer, config }) {
     next();
   });
 
-  const ADMIN = ['admin'];
-  const ANYONE = ['admin', 'kiosk'];
+  const STAFF = ['admin', 'staff'];
+  const ANYONE = ['admin', 'staff', 'kiosk'];
   const requireRole = (roles) => (req, _res, next) => {
     if (!req.user) return next(new HttpError(401, 'Please log in'));
     if (!roles.includes(req.user.role)) return next(new HttpError(403, "Your account doesn't have access to this"));
@@ -172,9 +172,9 @@ function createApp({ db, mailer, config }) {
     return p;
   }
 
-  // ---------- admin API (admins only) ----------
+  // ---------- admin API (staff + admin) ----------
   const admin = express.Router();
-  admin.use(requireRole(ADMIN));
+  admin.use(requireRole(STAFF));
   app.use('/api/admin', admin);
 
   // ---------- kiosk API (any logged-in account) ----------
@@ -522,7 +522,7 @@ function createApp({ db, mailer, config }) {
 
   admin.get('/users', adminOnly, (_req, res) => {
     const rows = db.prepare(`SELECT id, email, name, role, created_at AS createdAt FROM users
-      ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END, name COLLATE NOCASE, email`).all();
+      ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'staff' THEN 1 ELSE 2 END, name COLLATE NOCASE, email`).all();
     res.json({ users: rows });
   });
 
@@ -578,7 +578,7 @@ function createApp({ db, mailer, config }) {
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
   app.get('/login', page('login.html'));
   app.get('/', page('index.html', ANYONE));
-  app.get('/admin', page('admin.html', ADMIN));
+  app.get('/admin', page('admin.html', STAFF));
   app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
 
   // eslint-disable-next-line no-unused-vars

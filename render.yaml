@@ -4,6 +4,13 @@ services:
     name: weight-room
     runtime: node
     rootDir: weight-room
+    branch: main
+    # Redeploy automatically after each change to main, once GitHub's test checks pass.
+    autoDeployTrigger: checksPass
+    # Only redeploy when the app itself changes (not the profile README).
+    buildFilter:
+      paths:
+        - weight-room/**
     # A persistent disk (needed to keep the database) requires a paid instance.
     plan: starter
     region: oregon

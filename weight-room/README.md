@@ -62,11 +62,15 @@ Any SMTP account works:
 The repo includes a `render.yaml` Blueprint, so you can set it up from a browser (an iPad works).
 
 1. Sign up at [render.com](https://render.com) and connect your GitHub account.
-2. Go to **New → Blueprint**, pick this repository, and pick the branch the app is on.
+2. Go to **New → Blueprint** and pick this repository (it deploys the `main` branch).
 3. Fill in the settings it asks for: `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` (your
    admin login), plus the email settings (leave them blank for now if you like).
 4. Click **Apply**. After a few minutes your app is live at `https://weight-room-xxxx.onrender.com`.
 5. Log in there with your admin email and password.
+
+**Automatic deploys:** every time something is merged into `main` that changes the app, GitHub runs
+the tests, and once they pass Render deploys the new version on its own. If the tests fail, the
+live site stays on the last good version.
 
 Cost: the database lives on a persistent disk, which needs Render's paid **Starter** instance
 (about $7/month plus $0.25/month for the 1 GB disk). Render's free tier would erase the data on

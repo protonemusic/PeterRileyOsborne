@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Weight Room Login</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="wrap">
+    <section class="card" style="max-width:440px;margin:60px auto">
+      <h1>Weight Room</h1>
+      <p class="muted">Log in to continue.</p>
+      <div id="login-msg" class="message" hidden></div>
+      <form id="login-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="username" autocapitalize="off" autocorrect="off" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="primary big" type="submit">Log In</button>
+      </form>
+    </section>
+  </main>
+  <script src="/login.js"></script>
+</body>
+</html>

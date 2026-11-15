@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Weight Room Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="wrap wide">
+    <!-- Dashboard -->
+    <div id="dash">
+      <div class="topbar">
+        <div>
+          <h1>Weight Room Admin</h1>
+          <div class="muted small" id="whoami"></div>
+        </div>
+        <div class="topbar-actions">
+          <a href="/"><button type="button" tabindex="-1">Kiosk</button></a>
+          <button type="button" id="logout">Log Out</button>
+        </div>
+      </div>
+      <div id="global-msg" class="message" hidden></div>
+
+      <nav class="nav" role="tablist">
+        <button role="tab" data-view="today" aria-selected="true">Sign-ins &amp; Notify</button>
+        <button role="tab" data-view="sports" aria-selected="false">Sports, Seasons &amp; Coaches</button>
+        <button role="tab" data-view="students" aria-selected="false">Students</button>
+        <button role="tab" data-view="history" aria-selected="false">Email History</button>
+        <button role="tab" data-view="users" aria-selected="false" hidden id="nav-users">Users</button>
+        <button role="tab" data-view="account" aria-selected="false">My Account</button>
+      </nav>
+
+      <!-- Sign-ins & notify -->
+      <section data-panel="today">
+        <div class="card">
+          <div class="card-head">
+            <h2>Notify Coaches</h2>
+            <button class="primary" id="notify-btn">Notify Coaches</button>
+          </div>
+          <p class="muted small">Emails each sport's coaches a list of their athletes who signed in since the last notice.
+            Each sign-in is only sent once.</p>
+          <div id="notify-msg" class="message" hidden></div>
+          <div id="notify-preview"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Sign-ins</h2>
+            <input type="date" id="signin-date" style="max-width:200px;min-height:44px">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Time</th><th>Name</th><th>Sport</th><th>Coaches</th><th></th></tr></thead>
+              <tbody id="signin-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sports -->
+      <section data-panel="sports" hidden>
+        <div class="card">
+          <div class="card-head"><h2>Sports</h2></div>
+          <p class="muted small">Students can only pick sports that are in season today. If no sport is in season, they can pick any sport.</p>
+          <form class="inline-form" id="add-sport-form" style="margin-bottom:18px">
+            <input id="new-sport" placeholder="New sport, e.g. Football" required maxlength="50">
+            <button class="primary" type="submit">Add Sport</button>
+          </form>
+          <div id="sports-list"></div>
+        </div>
+      </section>
+
+      <!-- Students -->
+      <section data-panel="students" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>Students</h2>
+            <input type="search" id="student-filter" placeholder="Filter by name" style="max-width:260px;min-height:44px">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>First</th><th>Last</th><th>Sport</th><th>Sign-ins</th><th>Last sign-in</th><th></th></tr></thead>
+              <tbody id="student-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- History -->
+      <section data-panel="history" hidden>
+        <div class="card">
+          <h2>Email History</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sent</th><th>Sport</th><th>Sign-ins</th><th>To</th></tr></thead>
+              <tbody id="history-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Users (admins only) -->
+      <section data-panel="users" hidden>
+        <div class="card">
+          <h2>Add a User</h2>
+          <p class="muted small">
+            <strong>Admin:</strong> everything, including managing users.
+            <strong>Staff:</strong> everything except managing users.
+            <strong>Kiosk:</strong> only the student sign-in screen. Use this for the iPad at the door; it stays logged in for 6 months.
+          </p>
+          <form id="add-user-form" autocomplete="off">
+            <div class="row">
+              <div class="field"><label for="nu-name">Name</label><input id="nu-name" maxlength="80"></div>
+              <div class="field"><label for="nu-email">Email</label><input id="nu-email" type="email" required autocapitalize="off"></div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="nu-role">Role</label>
+                <select id="nu-role" required>
+                  <option value="staff">Staff</option>
+                  <option value="kiosk">Kiosk</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="field"><label for="nu-password">Password (8+ characters)</label><input id="nu-password" type="password" minlength="8" required autocomplete="new-password"></div>
+            </div>
+            <button class="primary" type="submit">Add User</button>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Users</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>New password</th><th></th></tr></thead>
+              <tbody id="user-rows"></tbody>
+            </table>
+          </div>
+          <p class="muted small">Leave "New password" blank to keep the current one. Changing a password or role logs that person out.</p>
+        </div>
+      </section>
+
+      <!-- Account -->
+      <section data-panel="account" hidden>
+        <div class="card" style="max-width:520px">
+          <h2>Change My Password</h2>
+          <form id="password-form">
+            <div class="field"><label for="pw-current">Current password</label><input id="pw-current" type="password" required autocomplete="current-password"></div>
+            <div class="field"><label for="pw-new">New password (8+ characters)</label><input id="pw-new" type="password" minlength="8" required autocomplete="new-password"></div>
+            <button class="primary" type="submit">Change Password</button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>

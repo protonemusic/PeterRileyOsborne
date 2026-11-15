@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Weight Room Sign In</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <h1>Weight Room</h1>
+      <p class="muted">Sign in every time you come in.</p>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-signin" aria-selected="true">Sign In</button>
+      <button role="tab" id="tab-signup" aria-selected="false">New? Sign Up</button>
+    </div>
+
+    <!-- Sign in -->
+    <section class="card" id="panel-signin">
+      <div id="signin-msg" class="message" hidden></div>
+      <form id="signin-form" autocomplete="off">
+        <div class="field search" id="search-box">
+          <label for="name-search">Start typing your name</label>
+          <input id="name-search" type="text" placeholder="e.g. Jordan Smith" autocapitalize="words"
+                 autocorrect="off" spellcheck="false" role="combobox" aria-expanded="false"
+                 aria-controls="suggestions" aria-autocomplete="list">
+          <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+        </div>
+
+        <div id="selected-box" hidden>
+          <div class="selected">
+            <strong id="selected-name"></strong>
+            <button type="button" class="link" id="change-name">Not you?</button>
+          </div>
+          <div class="field">
+            <label for="signin-sport">Current sport</label>
+            <select id="signin-sport"></select>
+          </div>
+        </div>
+
+        <button type="submit" class="primary big" id="signin-btn" disabled>Sign In</button>
+      </form>
+    </section>
+
+    <!-- Sign up -->
+    <section class="card" id="panel-signup" hidden>
+      <div id="signup-msg" class="message" hidden></div>
+      <form id="signup-form" autocomplete="off">
+        <div class="row">
+          <div class="field">
+            <label for="first-name">First name</label>
+            <input id="first-name" required maxlength="50" autocapitalize="words" autocorrect="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="last-name">Last name</label>
+            <input id="last-name" required maxlength="50" autocapitalize="words" autocorrect="off" spellcheck="false">
+          </div>
+        </div>
+        <div class="field">
+          <label for="signup-sport">Current sport</label>
+          <select id="signup-sport" required></select>
+        </div>
+        <button type="submit" class="primary big">Sign Up</button>
+      </form>
+    </section>
+
+    <!-- Success -->
+    <section class="card success" id="panel-success" hidden>
+      <div class="check" aria-hidden="true">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </div>
+      <h2 id="success-title"></h2>
+      <p class="muted" id="success-detail"></p>
+      <button type="button" class="primary big" id="success-done" style="max-width:320px;margin:12px auto 0">Done</button>
+    </section>
+
+    <p class="footer-link"><a href="/admin">Admin</a></p>
+  </main>
+  <script src="/kiosk.js"></script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+# Render Blueprint for the weight room app (https://render.com/docs/blueprint-spec)
+services:
+  - type: web
+    name: weight-room
+    runtime: node
+    rootDir: weight-room
+    branch: main
+    # Redeploy automatically after each change to main, once GitHub's test checks pass.
+    autoDeployTrigger: checksPass
+    # Only redeploy when the app itself changes (not the profile README).
+    buildFilter:
+      paths:
+        - weight-room/**
+    # A persistent disk (needed to keep the database) requires a paid instance.
+    plan: starter
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    disk:
+      name: weight-room-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_FILE
+        value: /var/data/weight-room.db
+      - key: TIME_ZONE
+        value: America/Los_Angeles
+      - key: APP_NAME
+        value: Weight Room
+      - key: SECURE_COOKIES
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+      # You'll be asked for these when you create the Blueprint.
+      - key: ADMIN_NAME
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false

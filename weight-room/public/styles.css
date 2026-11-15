@@ -166,8 +166,21 @@ td input, td select { min-height: 40px; padding: 6px 10px; }
 .pill.ok { background: var(--ok-soft); color: var(--ok); }
 .pill.warn { background: var(--warn-soft); color: var(--warn); }
 
-.sport { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-.sport-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.sport { border: 1px solid var(--border); border-radius: 12px; padding: 0 16px; margin-bottom: 10px; }
+.sport[open] { padding-bottom: 16px; }
+.sport-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 14px 0; cursor: pointer; list-style: none; min-height: 52px;
+}
+.sport-head::-webkit-details-marker { display: none; }
+.sport-head .chevron {
+  width: 10px; height: 10px; flex: 0 0 auto; margin: 0 4px 0 2px;
+  border-right: 2.5px solid var(--muted); border-bottom: 2.5px solid var(--muted);
+  transform: rotate(-45deg); transition: transform .15s;
+}
+.sport[open] > .sport-head .chevron { transform: rotate(45deg); }
+.sport[open] > .sport-head { border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.sport-actions { display: flex; justify-content: flex-end; gap: 4px; }
 .sport-head h3 { margin: 0; }
 .sport-head .spacer { flex: 1; }
 .sub { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; margin: 14px 0 6px; }
@@ -185,3 +198,4 @@ pre.email { white-space: pre-wrap; background: var(--bg); padding: 12px; border-
 
 #user-rows select { min-width: 110px; }
 #user-rows input[type="email"] { min-width: 200px; }
+.sport-head h3 { color: var(--text); }

@@ -214,7 +214,13 @@ function finish() {
   resetSignIn();
   showPanel('signin');
   loadSports();
+
+// The Admin link only appears for admins.
+api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role !== 'admin'; }).catch(() => {});
 }
 $('success-done').addEventListener('click', finish);
 
 loadSports();
+
+// The Admin link only appears for admins.
+api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role !== 'admin'; }).catch(() => {});

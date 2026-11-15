@@ -186,6 +186,14 @@ $('add-sport-form').addEventListener('submit', (e) => act(async () => {
   renderSports();
 }));
 
+// Which sport entries are expanded (remembered on this device).
+const expandedSports = new Set((() => {
+  try { return JSON.parse(localStorage.getItem('wr-expanded-sports') || '[]'); } catch { return []; }
+})());
+function saveExpanded() {
+  try { localStorage.setItem('wr-expanded-sports', JSON.stringify([...expandedSports])); } catch { /* ignore */ }
+}
+
 const fmtDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 function renderSports() {
@@ -204,11 +212,23 @@ function renderSports() {
     const coachName = h('input', { placeholder: 'Coach name' , maxLength: 80 });
     const coachEmail = h('input', { type: 'email', placeholder: 'coach@school.org', required: true });
 
-    list.append(h('div', { className: 'sport' },
-      h('div', { className: 'sport-head' },
+    const coachCount = `${sport.coaches.length} coach${sport.coaches.length === 1 ? '' : 'es'}`;
+    const details = h('details', {
+      className: 'sport',
+      open: expandedSports.has(sport.id),
+      ontoggle: () => {
+        if (details.open) expandedSports.add(sport.id); else expandedSports.delete(sport.id);
+        saveExpanded();
+      },
+    },
+      h('summary', { className: 'sport-head' },
+        h('span', { className: 'chevron', ariaHidden: 'true' }),
         h('h3', {}, sport.name),
         h('span', { className: `pill ${sport.inSeason ? 'ok' : ''}` }, sport.inSeason ? 'In season' : 'Out of season'),
         h('span', { className: 'spacer' }),
+        h('span', { className: 'muted small' }, coachCount),
+      ),
+      h('div', { className: 'sport-actions' },
         h('button', {
           className: 'link',
           onclick: () => act(async () => {
@@ -284,7 +304,8 @@ function renderSports() {
           await refresh();
         }),
       }, coachName, coachEmail, h('button', { type: 'submit' }, 'Add Coach')),
-    ));
+    );
+    list.append(details);
   }
 }
 
@@ -345,7 +366,7 @@ async function loadHistory() {
 }
 
 // ---------- users ----------
-const ROLE_LABELS = { admin: 'Admin', staff: 'Staff', kiosk: 'Kiosk' };
+const ROLE_LABELS = { admin: 'Admin', kiosk: 'Kiosk' };
 
 async function loadUsers() {
   const { users } = await api('/api/admin/users');

@@ -75,6 +75,8 @@ function openDb(file) {
   db.exec('PRAGMA foreign_keys = ON;');
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  // The old "staff" role was removed: those accounts now get kiosk (sign-in screen) access only.
+  db.exec("UPDATE users SET role = 'kiosk' WHERE role = 'staff'");
   return db;
 }
 

@@ -199,3 +199,18 @@ pre.email { white-space: pre-wrap; background: var(--bg); padding: 12px; border-
 #user-rows select { min-width: 110px; }
 #user-rows input[type="email"] { min-width: 200px; }
 .sport-head h3 { color: var(--text); }
+
+textarea {
+  width: 100%; font: inherit; color: var(--text); background: var(--surface);
+  border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; resize: vertical;
+}
+textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#import-card > summary { cursor: pointer; list-style-position: inside; }
+.season-grid { display: grid; gap: 8px; }
+.season-row { display: grid; grid-template-columns: 70px 1.2fr 1fr 1fr; gap: 8px; align-items: center; }
+.season-row input { min-height: 44px; padding: 8px 10px; }
+@media (max-width: 600px) {
+  .season-row { grid-template-columns: 1fr 1fr; }
+  .season-row strong { grid-column: 1 / -1; }
+  .season-row input:first-of-type { grid-column: 1 / -1; }
+}

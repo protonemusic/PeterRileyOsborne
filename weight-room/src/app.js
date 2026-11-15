@@ -6,6 +6,7 @@ const express = require('express');
 const { tx } = require('./db');
 const { localDate, formatTime, formatDay, isValidDate } = require('./time');
 const users = require('./users');
+const { parseImport, applyImport, SEASON_NAMES } = require('./importer');
 
 const COOKIE = 'wr_session';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -325,17 +326,51 @@ function createApp({ db, mailer, config }) {
     res.json({ ok: true });
   });
 
+  /** Coach name and email. The email is optional (it can be added later), but one of the two is required. */
+  function coachFields(body) {
+    const name = typeof body?.name === 'string' ? body.name.trim().replace(/\s+/g, ' ').slice(0, 80) : '';
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (email && !users.isValidEmail(email)) throw bad('Please enter a valid email address');
+    if (!name && !email) throw bad('Please enter a coach name or email');
+    return { name, email };
+  }
+
   admin.post('/sports/:id/coaches', (req, res) => {
     const sportId = toId(req.params.id);
     if (!getSport(sportId)) throw notFound('Sport');
-    const name = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
-    if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email) || email.length > 254) {
-      throw bad('Please enter a valid email address');
-    }
+    const { name, email } = coachFields(req.body);
     const { lastInsertRowid } = db.prepare('INSERT INTO coaches (sport_id, name, email) VALUES (?, ?, ?)')
       .run(sportId, name, email);
     res.status(201).json({ id: Number(lastInsertRowid), sportId, name, email });
+  });
+
+  admin.put('/coaches/:id', (req, res) => {
+    const id = toId(req.params.id);
+    const { name, email } = coachFields(req.body);
+    if (db.prepare('UPDATE coaches SET name = ?, email = ? WHERE id = ?').run(name, email, id).changes === 0) throw notFound('Coach');
+    res.json({ id, name, email });
+  });
+
+  // Bulk import of sports, seasons and coaches from pasted text.
+  admin.post('/import', (req, res) => {
+    const parsed = parseImport(req.body?.text);
+    if (!parsed.sports.length) throw bad('No sports found. Put each sport on its own line.');
+    const seasonDates = {};
+    for (const key of SEASON_NAMES) {
+      const d = req.body?.seasons?.[key];
+      if (!d) continue;
+      const label = typeof d.label === 'string' ? d.label.trim().slice(0, 50) : '';
+      if (!isValidDate(d.startDate) || !isValidDate(d.endDate)) throw bad(`Please enter ${key} start and end dates`);
+      if (d.startDate > d.endDate) throw bad(`The ${key} start date must be on or before its end date`);
+      seasonDates[key] = { label, startDate: d.startDate, endDate: d.endDate };
+    }
+    const missing = [...new Set(parsed.sports.flatMap((s) => s.seasons))].filter((k) => !seasonDates[k]);
+    if (missing.length) throw bad(`Please enter dates for: ${missing.join(', ')}`);
+    const dryRun = req.body?.dryRun === true;
+    const summary = dryRun
+      ? applyImport(db, parsed, seasonDates, { dryRun })
+      : tx(db, () => applyImport(db, parsed, seasonDates));
+    res.json({ dryRun, warnings: parsed.warnings, sports: summary });
   });
 
   admin.delete('/coaches/:id', (req, res) => {
@@ -474,11 +509,13 @@ function createApp({ db, mailer, config }) {
     }
     const results = [];
     for (const g of groups) {
-      if (!g.coaches.length) {
-        results.push({ sportName: g.sportName, status: 'skipped', reason: 'No coaches on file', count: g.signIns.length });
+      const withEmail = g.coaches.filter((c) => c.email);
+      if (!withEmail.length) {
+        const reason = g.coaches.length ? 'No coach email addresses on file' : 'No coaches on file';
+        results.push({ sportName: g.sportName, status: 'skipped', reason, count: g.signIns.length });
         continue;
       }
-      const to = g.coaches.map((c) => (c.name ? `"${c.name.replace(/"/g, '')}" <${c.email}>` : c.email));
+      const to = withEmail.map((c) => (c.name ? `"${c.name.replace(/"/g, '')}" <${c.email}>` : c.email));
       try {
         await mailer.send({ to, ...g.email });
       } catch (err) {
@@ -490,9 +527,9 @@ function createApp({ db, mailer, config }) {
         const mark = db.prepare('UPDATE sign_ins SET notified_at = ? WHERE id = ?');
         for (const s of g.signIns) mark.run(sentAt, s.id);
         db.prepare(`INSERT INTO notifications (sent_at, sport_name, recipients, sign_in_count)
-          VALUES (?, ?, ?, ?)`).run(sentAt, g.sportName, g.coaches.map((c) => c.email).join(', '), g.signIns.length);
+          VALUES (?, ?, ?, ?)`).run(sentAt, g.sportName, withEmail.map((c) => c.email).join(', '), g.signIns.length);
       });
-      results.push({ sportName: g.sportName, status: 'sent', to: g.coaches.map((c) => c.email), count: g.signIns.length });
+      results.push({ sportName: g.sportName, status: 'sent', to: withEmail.map((c) => c.email), count: g.signIns.length });
     }
     res.json({ results });
   });

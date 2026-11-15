@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Weight Room Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="wrap wide">
+    <!-- Login -->
+    <section id="login" class="card" style="max-width:420px;margin:60px auto" hidden>
+      <h1>Admin</h1>
+      <div id="login-msg" class="message" hidden></div>
+      <form id="login-form">
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="primary big" type="submit">Log In</button>
+      </form>
+      <p class="footer-link"><a href="/">Back to sign-in</a></p>
+    </section>
+
+    <!-- Dashboard -->
+    <div id="dash" hidden>
+      <div class="topbar">
+        <h1>Weight Room Admin</h1>
+        <div class="topbar-actions">
+          <a href="/"><button type="button" tabindex="-1">Kiosk</button></a>
+          <button type="button" id="logout">Log Out</button>
+        </div>
+      </div>
+      <div id="global-msg" class="message" hidden></div>
+
+      <nav class="nav" role="tablist">
+        <button role="tab" data-view="today" aria-selected="true">Sign-ins &amp; Notify</button>
+        <button role="tab" data-view="sports" aria-selected="false">Sports, Seasons &amp; Coaches</button>
+        <button role="tab" data-view="students" aria-selected="false">Students</button>
+        <button role="tab" data-view="history" aria-selected="false">Email History</button>
+      </nav>
+
+      <!-- Sign-ins & notify -->
+      <section data-panel="today">
+        <div class="card">
+          <div class="card-head">
+            <h2>Notify Coaches</h2>
+            <button class="primary" id="notify-btn">Notify Coaches</button>
+          </div>
+          <p class="muted small">Emails each sport's coaches a list of their athletes who signed in since the last notice.
+            Each sign-in is only sent once.</p>
+          <div id="notify-msg" class="message" hidden></div>
+          <div id="notify-preview"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Sign-ins</h2>
+            <input type="date" id="signin-date" style="max-width:200px;min-height:44px">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Time</th><th>Name</th><th>Sport</th><th>Coaches</th><th></th></tr></thead>
+              <tbody id="signin-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sports -->
+      <section data-panel="sports" hidden>
+        <div class="card">
+          <div class="card-head"><h2>Sports</h2></div>
+          <p class="muted small">Students can only pick sports that are in season today. If no sport is in season, they can pick any sport.</p>
+          <form class="inline-form" id="add-sport-form" style="margin-bottom:18px">
+            <input id="new-sport" placeholder="New sport, e.g. Football" required maxlength="50">
+            <button class="primary" type="submit">Add Sport</button>
+          </form>
+          <div id="sports-list"></div>
+        </div>
+      </section>
+
+      <!-- Students -->
+      <section data-panel="students" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>Students</h2>
+            <input type="search" id="student-filter" placeholder="Filter by name" style="max-width:260px;min-height:44px">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>First</th><th>Last</th><th>Sport</th><th>Sign-ins</th><th>Last sign-in</th><th></th></tr></thead>
+              <tbody id="student-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- History -->
+      <section data-panel="history" hidden>
+        <div class="card">
+          <h2>Email History</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sent</th><th>Sport</th><th>Sign-ins</th><th>To</th></tr></thead>
+              <tbody id="history-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>

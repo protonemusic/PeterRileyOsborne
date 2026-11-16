@@ -307,3 +307,26 @@ test('existing databases get the new student column', () => {
   assert.ok(workouts.ensureToken(db, 1));
   db.close();
 });
+
+test('a student who signed in before the program was made active gets a workout on their next sign-in that day', async () => {
+  const t = await setup();
+  try {
+    const s = await t.student('Ava');
+    assert.deepEqual((await t.signIn(s)).workout, { status: 'none' });
+    await t.uploadPdf();
+    const r = await t.signIn(s);
+    assert.equal(r.alreadySignedIn, true);
+    assert.equal(r.workout.dayNumber, 1);
+    assert.ok(r.qrSvg);
+    t.day('2026-11-17');
+    assert.equal((await t.signIn(s)).workout.dayNumber, 2);
+  } finally { await t.close(); }
+});
+
+test('static files tell browsers to check for new versions', async () => {
+  const t = await setup();
+  try {
+    const res = await fetch(`${t.base}/kiosk.js`);
+    assert.equal(res.headers.get('cache-control'), 'no-cache');
+  } finally { await t.close(); }
+});

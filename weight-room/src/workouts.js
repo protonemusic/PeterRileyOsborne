@@ -116,19 +116,6 @@ function assignWorkout(db, { studentId, signInId, today, tz }) {
   return { status: 'assigned', workout: summarize(db, db.prepare('SELECT * FROM student_workouts WHERE id = ?').get(id), program) };
 }
 
-/** Today's workout for a student who already signed in (or the program-complete state). */
-function todaysWorkout(db, studentId, today) {
-  const program = activeProgram(db);
-  const row = db.prepare(`SELECT * FROM student_workouts WHERE student_id = ? AND assigned_date = ?
-    ORDER BY id DESC LIMIT 1`).get(studentId, today);
-  if (row) return { status: 'assigned', workout: summarize(db, row, program) };
-  if (!program) return { status: 'none', workout: null };
-  const last = db.prepare(`SELECT day_number FROM student_workouts WHERE student_id = ? AND program_id = ?
-    ORDER BY assigned_date DESC, id DESC LIMIT 1`).get(studentId, program.id);
-  if (last && last.day_number >= program.totalDays) return { status: 'complete', workout: null };
-  return { status: 'none', workout: null };
-}
-
 /** Where a student is in the active program, for the admin Students list. */
 function progressFor(db, studentId) {
   const program = activeProgram(db);
@@ -247,5 +234,5 @@ function dashboard(db, token, today) {
 
 module.exports = {
   MAX_MISSED_DAYS, saveProgram, activeProgram, getProgramDay, ensureToken, resetToken, openDaysBetween,
-  assignWorkout, todaysWorkout, progressFor, workoutDetail, saveResults, dashboard,
+  assignWorkout, progressFor, workoutDetail, saveResults, dashboard,
 };

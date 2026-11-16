@@ -273,10 +273,12 @@ function createApp({ db, mailer, config }) {
     if (sportId == null) throw bad('Please choose your current sport');
 
     const name = `${student.first_name} ${student.last_name}`;
-    const last = db.prepare(`SELECT signed_in_at FROM sign_ins WHERE student_id = ?
+    const last = db.prepare(`SELECT id, signed_in_at FROM sign_ins WHERE student_id = ?
       ORDER BY signed_in_at DESC LIMIT 1`).get(studentId);
     if (last && localDate(new Date(last.signed_in_at), tz) === today()) {
-      const workout = workouts.todaysWorkout(db, studentId, today());
+      // Gives them today's workout if they don't have one yet (e.g. they signed in
+      // before a program was made active); otherwise returns the one they already have.
+      const workout = workouts.assignWorkout(db, { studentId, signInId: last.id, today: today(), tz });
       return res.json({
         alreadySignedIn: true, name, time: formatTime(last.signed_in_at, tz),
         ...(await workoutLink(req, studentId, workout)),
@@ -754,7 +756,12 @@ function createApp({ db, mailer, config }) {
   });
   app.get('/', page('index.html', ANYONE));
   app.get('/admin', page('admin.html', STAFF));
-  app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
+  // "no-cache" = browsers may keep a copy but must check for a newer one each time,
+  // so the kiosk iPad picks up new versions right after a deploy.
+  app.use(express.static(path.join(__dirname, '..', 'public'), {
+    index: false,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+  }));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {

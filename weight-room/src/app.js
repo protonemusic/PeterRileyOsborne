@@ -219,11 +219,11 @@ function createApp({ db, mailer, config }) {
   const kiosk = express.Router();
   kiosk.use(requireRole(ANYONE));
 
+  // Every sport, flagged when it's in season today (students may pick any of them).
   kiosk.get('/sports', (_req, res) => {
-    const active = inSeasonSports();
-    if (active.length) return res.json({ sports: active, inSeasonOnly: true });
+    const active = new Set(inSeasonSports().map((s) => s.id));
     const all = db.prepare('SELECT id, name FROM sports ORDER BY name COLLATE NOCASE').all();
-    res.json({ sports: all, inSeasonOnly: false });
+    res.json({ sports: all.map((s) => ({ ...s, inSeason: active.has(s.id) })) });
   });
 
   kiosk.get('/students/search', (req, res) => {

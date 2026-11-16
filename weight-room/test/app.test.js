@@ -171,22 +171,20 @@ test('users can change their own password', async () => {
   } finally { await t.close(); }
 });
 
-test('kiosk only offers in-season sports, falling back to all', async () => {
+test('kiosk lists every sport, flagging the ones in season', async () => {
   const t = await setup();
   try {
     await t.login('kiosk');
-    assert.deepEqual((await t.call('GET', '/api/sports')).body, { sports: [], inSeasonOnly: false });
+    assert.deepEqual((await t.call('GET', '/api/sports')).body, { sports: [] });
     await seed(t);
+    await t.login('kiosk');
     let r = (await t.call('GET', '/api/sports')).body;
-    assert.deepEqual(r.sports.map((s) => s.name), ['Football']);
-    assert.equal(r.inSeasonOnly, true);
+    assert.deepEqual(r.sports.map((s) => [s.name, s.inSeason]), [['Football', true], ['Track', false]]);
 
-    t.clock.now = new Date('2027-01-10T20:00:00Z'); // between seasons
-    assert.equal((await t.call('GET', '/api/sports')).status, 401); // 14-day admin session expired
+    t.clock.now = new Date('2027-03-10T20:00:00Z'); // track season
     await t.login('kiosk');
     r = (await t.call('GET', '/api/sports')).body;
-    assert.deepEqual(r.sports.map((s) => s.name), ['Football', 'Track']);
-    assert.equal(r.inSeasonOnly, false);
+    assert.deepEqual(r.sports.map((s) => [s.name, s.inSeason]), [['Football', false], ['Track', true]]);
   } finally { await t.close(); }
 });
 

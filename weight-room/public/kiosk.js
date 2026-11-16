@@ -47,11 +47,25 @@ async function loadSports() {
 }
 
 function fillSportSelect(select, current) {
-  const list = [...sports];
-  if (current && !list.some((s) => s.id === current.id)) list.push(current);
   select.replaceChildren();
   if (!current) select.append(new Option('Choose your sport…', ''));
-  for (const s of list) select.append(new Option(s.name, s.id, false, current?.id === s.id));
+  const option = (s) => new Option(s.name, s.id, false, current?.id === s.id);
+  const inSeason = sports.filter((s) => s.inSeason);
+  const other = sports.filter((s) => !s.inSeason);
+  if (current && !sports.some((s) => s.id === current.id)) other.push(current);
+  // Group in-season sports first; any sport can be chosen.
+  if (inSeason.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'In season';
+    g.append(...inSeason.map(option));
+    select.append(g);
+  }
+  if (other.length) {
+    const g = document.createElement('optgroup');
+    g.label = inSeason.length ? 'Other sports' : 'All sports';
+    g.append(...other.map(option));
+    select.append(g);
+  }
 }
 
 // ---------- sign in ----------

@@ -238,13 +238,17 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .exercise.priority .exercise-name { color: var(--accent); }
 .code { display: inline-block; min-width: 28px; color: var(--muted); font-weight: 600; font-size: 14px; }
 .last-time { color: var(--ok); margin-top: 2px; }
-.sets { margin-top: 8px; display: grid; gap: 6px; }
-.set-row { display: grid; grid-template-columns: 52px 1fr 1fr; gap: 8px; align-items: center; }
-.set-row input { min-height: 46px; padding: 8px 10px; text-align: center; font-size: 18px; }
-.set-labels span { text-align: center; }
+.sets { margin-top: 10px; display: grid; gap: 10px; }
+.set { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 12px; margin: 0; min-width: 0; }
+.set legend { font-weight: 700; font-size: 15px; padding: 0 4px; }
+.set-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.set-field { min-width: 0; }
+.set-field label { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.set-field input { min-height: 48px; padding: 8px 10px; font-size: 18px; }
+@media (max-width: 340px) { .set-fields { grid-template-columns: 1fr; } }
 .drill { display: flex; gap: 12px; align-items: center; font-weight: 400; margin: 0; cursor: pointer; }
 .drill input[type="checkbox"] { width: 28px; height: 28px; min-height: 0; flex: 0 0 auto; accent-color: var(--accent); }
-.drill-result { margin-top: 8px; min-height: 44px; }
+.drill-result { margin-top: 10px; }
 .save-row { display: flex; flex-direction: column; gap: 8px; align-items: stretch; text-align: center; }
 .history { list-style: none; margin: 0; padding: 0; }
 .history-item {

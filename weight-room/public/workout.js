@@ -106,28 +106,37 @@ function renderWorkout() {
         ),
         item.lastTime ? h('div', { className: 'small last-time' }, `Last time: ${item.lastTime}`) : null,
         h('div', { className: 'sets' },
-          h('div', { className: 'set-row set-labels small muted' }, h('span', {}, ''), h('span', {}, 'Weight (lb)'), h('span', {}, 'Reps')),
-          r.sets.map((set, s) => h('div', { className: 'set-row' },
-            h('span', { className: 'small muted' }, `Set ${s + 1}`),
-            h('input', {
-              inputMode: 'decimal', value: set.weight, maxLength: 12, placeholder: '—', ariaLabel: `${item.name} set ${s + 1} weight`,
-              oninput: (e) => { set.weight = e.target.value; queueSave(); },
-            }),
-            h('input', {
-              inputMode: 'text', value: set.reps, maxLength: 12, placeholder: repsHint, ariaLabel: `${item.name} set ${s + 1} reps`,
-              oninput: (e) => { set.reps = e.target.value; queueSave(); },
-            }),
-          ))),
+          r.sets.map((set, s) => {
+            const id = `w${i}-s${s}`;
+            // One block per set, top to bottom: "Set 1", then Weight and Reps side by side.
+            return h('fieldset', { className: 'set' },
+              h('legend', {}, r.sets.length > 1 ? `Set ${s + 1} of ${r.sets.length}` : 'Your result'),
+              h('div', { className: 'set-fields' },
+                h('div', { className: 'set-field' },
+                  h('label', { htmlFor: `${id}-weight` }, 'Weight (lb)'),
+                  h('input', {
+                    id: `${id}-weight`, inputMode: 'decimal', value: set.weight, maxLength: 12,
+                    oninput: (e) => { set.weight = e.target.value; queueSave(); },
+                  })),
+                h('div', { className: 'set-field' },
+                  h('label', { htmlFor: `${id}-reps` }, repsHint ? `Reps · goal ${repsHint}` : 'Reps / amount'),
+                  h('input', {
+                    id: `${id}-reps`, inputMode: repsHint ? 'numeric' : 'text', value: set.reps, maxLength: 12,
+                    oninput: (e) => { set.reps = e.target.value; queueSave(); },
+                  }))));
+          })),
       ));
     } else {
       box.append(h('div', { className: 'exercise' },
         h('label', { className: 'drill' },
           h('input', { type: 'checkbox', checked: r.done, onchange: (e) => { r.done = e.target.checked; queueSave(); } }),
           h('span', {}, h('span', { className: 'exercise-name' }, item.name), h('span', { className: 'small muted' }, ` ${item.plan || ''}`))),
-        h('input', {
-          className: 'drill-result', value: r.result, maxLength: 40, placeholder: 'Best time / distance (optional)',
-          oninput: (e) => { r.result = e.target.value; queueSave(); },
-        }),
+        h('div', { className: 'set-field drill-result' },
+          h('label', { htmlFor: `d${i}-result` }, 'Best time / distance (optional)'),
+          h('input', {
+            id: `d${i}-result`, value: r.result, maxLength: 40,
+            oninput: (e) => { r.result = e.target.value; queueSave(); },
+          })),
       ));
     }
   });

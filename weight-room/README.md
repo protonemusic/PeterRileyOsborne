@@ -18,7 +18,7 @@ button emails each sport's coaches a list of their athletes who signed in.
     (season headings, sports, "Head Coach:" lines) and adds everything at once without duplicates.
     A coach's email is optional at first; coaches without one show **No email** and aren't emailed
     until you add it.
-    The kiosk only offers sports that are in season today. If none are, it offers all of them.
+    Students can pick any sport; the ones in season today are listed first under "In season".
   - **Workouts:** upload the workout program (PDF or Word), preview every day, then make it active.
   - **Students:** fix names or sports, see where each student is in the program, open a student's
     workout page, or give them a new workout link.

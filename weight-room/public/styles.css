@@ -33,7 +33,7 @@
     --warn-soft: #33260a;
     --danger: #f87171;
     --shadow: none;
-    --stripe: #232a33;
+    --stripe: #212121;
     color-scheme: dark;
   }
 }
@@ -235,18 +235,18 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .dash-head { margin: 8px 0 16px; }
 .dash-head h1 { margin-bottom: 2px; }
 /* Exercises: alternating background, at least 1.617rem between exercise titles. */
-#w-items { display: grid; gap: 1.617rem; margin: 0 -12px 1.617rem; }
-.exercise { padding: 16px 12px; border-radius: 12px; }
+#w-items { display: grid; gap: 0; margin: 0 -12px 1.617rem; }
+.exercise { padding: 14px 12px; border-radius: 12px; }
 #w-items .exercise:nth-child(even) { background: var(--stripe); }
 .exercise-head { margin-bottom: 4px; }
 .exercise-name { font-weight: 700; }
 .exercise.priority .exercise-name { color: var(--accent); }
 .code { display: inline-block; min-width: 28px; color: var(--muted); font-weight: 600; font-size: 14px; }
 .last-time { color: var(--ok); margin-top: 2px; }
-.sets { margin-top: 10px; display: grid; gap: 10px; }
-.set { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 12px; margin: 0; min-width: 0; }
+.sets { margin-top: 8px; display: grid; gap: 6px; }
+.set { border: 1px solid var(--border); border-radius: 10px; padding: 4px 12px 10px; margin: 0; min-width: 0; }
 .set legend { font-weight: 700; font-size: 15px; padding: 0 4px; }
-.set-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.set-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
 .set-field { min-width: 0; }
 .set-field label { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
 .set-field input { min-height: 48px; padding: 8px 10px; font-size: 18px; }

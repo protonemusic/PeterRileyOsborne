@@ -14,6 +14,7 @@
   --danger: #b42318;
   --radius: 14px;
   --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 4px 16px rgb(0 0 0 / 6%);
+  --stripe: #f1f1f1;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -32,6 +33,7 @@
     --warn-soft: #33260a;
     --danger: #f87171;
     --shadow: none;
+    --stripe: #232a33;
     color-scheme: dark;
   }
 }
@@ -232,8 +234,11 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .dash .wrap { padding-top: 16px; }
 .dash-head { margin: 8px 0 16px; }
 .dash-head h1 { margin-bottom: 2px; }
-.exercise { border-top: 1px solid var(--border); padding: 14px 0; }
-.exercise:first-child { border-top: none; padding-top: 4px; }
+/* Exercises: alternating background, at least 1.617rem between exercise titles. */
+#w-items { display: grid; gap: 1.617rem; margin: 0 -12px 1.617rem; }
+.exercise { padding: 16px 12px; border-radius: 12px; }
+#w-items .exercise:nth-child(even) { background: var(--stripe); }
+.exercise-head { margin-bottom: 4px; }
 .exercise-name { font-weight: 700; }
 .exercise.priority .exercise-name { color: var(--accent); }
 .code { display: inline-block; min-width: 28px; color: var(--muted); font-weight: 600; font-size: 14px; }
@@ -258,7 +263,9 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 }
 .history-item > span:first-child { display: flex; flex-direction: column; }
 .history-label { font-weight: 600; }
-.history-item.active { background: var(--accent-soft); }
+.history li:nth-child(even) .history-item { background: var(--stripe); }
+.history-item { padding: 14px 10px; border-bottom: none; }
+.history-item.active, .history li .history-item.active { background: var(--accent-soft); }
 
 .day-preview { border-bottom: 1px solid var(--border); padding: 10px 0; }
 .day-preview > summary { cursor: pointer; }

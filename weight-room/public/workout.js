@@ -97,6 +97,8 @@ function renderWorkout() {
     const r = w.results.items[i];
     if (w.kind === 'weights') {
       const repsHint = (item.reps.match(/^\d+(-\d+)?/) || [''])[0];
+      // Timed holds ("30-45 sec", "30 sec each") are entered as a time, not reps.
+      const timedGoal = /\b(sec|secs|seconds|min|mins|minutes)\b/i.test(item.reps) ? item.reps : '';
       box.append(h('div', { className: `exercise${item.priority ? ' priority' : ''}` },
         h('div', { className: 'exercise-head' },
           h('div', {},
@@ -119,9 +121,10 @@ function renderWorkout() {
                     oninput: (e) => { set.weight = e.target.value; queueSave(); },
                   })),
                 h('div', { className: 'set-field' },
-                  h('label', { htmlFor: `${id}-reps` }, repsHint ? `Reps · goal ${repsHint}` : 'Reps / amount'),
+                  h('label', { htmlFor: `${id}-reps` }, timedGoal ? `Time · goal ${timedGoal}`
+                    : repsHint ? `Reps · goal ${repsHint}` : 'Reps / amount'),
                   h('input', {
-                    id: `${id}-reps`, inputMode: repsHint ? 'numeric' : 'text', value: set.reps, maxLength: 12,
+                    id: `${id}-reps`, inputMode: repsHint && !timedGoal ? 'numeric' : 'text', value: set.reps, maxLength: 12,
                     oninput: (e) => { set.reps = e.target.value; queueSave(); },
                   }))));
           })),

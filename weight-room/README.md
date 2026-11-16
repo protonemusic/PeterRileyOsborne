@@ -18,11 +18,37 @@ button emails each sport's coaches a list of their athletes who signed in.
     (season headings, sports, "Head Coach:" lines) and adds everything at once without duplicates.
     A coach's email is optional at first; coaches without one show **No email** and aren't emailed
     until you add it.
-    The kiosk only offers sports that are in season today. If none are, it offers all of them.
-  - **Students:** fix names or sports, and remove students.
+    Students can pick any sport; the ones in season today are listed first under "In season".
+  - **Workouts:** upload the workout program (PDF or Word), preview every day, then make it active.
+  - **Students:** fix names or sports, see where each student is in the program, open a student's
+    workout page, or give them a new workout link.
   - **Email History:** what was sent and to whom.
   - **Users** (admins only): add people and choose their role. See below.
   - **My Account:** change your password.
+
+## Daily workouts
+
+1. On the admin page, open **Workouts**, choose the program file and tap **Preview**. Check the days,
+   then tap **Make Active**.
+2. When a student signs in, the kiosk shows today's workout and a **QR code**. Scanning it opens the
+   student's own workout page on their phone (no login; the link is private to them). It shows only
+   their name, sport, today's workout form (weight and reps for each set, or done/time for running
+   drills) and their workout history, plus what they lifted last time for each exercise.
+3. Each weight room day a student signs in, they get the next workout (Day 1, Day 2, …). Signing in
+   twice in one day doesn't skip ahead.
+4. Missing **more than 5 days the weight room was open** (days anyone signed in) starts them over at
+   Day 1. Weekends, holidays and breaks don't count.
+5. After the last day they see **Program complete** until a new program is made active. Making a new
+   program active starts everyone at Day 1 on their next sign-in.
+
+**File format.** Each workout needs a heading like `Monday: Weights` or `Day 3: Lower Body` at the
+start of its table. A weights table's header includes "Sets x Reps", and each row has the exercise
+and its sets × reps (an `A1`-style code in front and a `*` for priority lifts are optional). A
+running table's header includes "Plan", and each row has the drill and its plan. A line like
+`Week 2: Foundation` labels the weeks. Workouts are used in the order they appear.
+
+If a student's link is shared, use **New Link** on the Students tab; the old link stops working and
+they get the new QR code next time they sign in.
 
 ## Accounts and roles
 

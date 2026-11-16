@@ -25,6 +25,7 @@
       <nav class="nav" role="tablist">
         <button role="tab" data-view="today" aria-selected="true">Sign-ins &amp; Notify</button>
         <button role="tab" data-view="sports" aria-selected="false">Sports, Seasons &amp; Coaches</button>
+        <button role="tab" data-view="workouts" aria-selected="false">Workouts</button>
         <button role="tab" data-view="students" aria-selected="false">Students</button>
         <button role="tab" data-view="history" aria-selected="false">Email History</button>
         <button role="tab" data-view="users" aria-selected="false" hidden id="nav-users">Users</button>
@@ -62,7 +63,7 @@
       <section data-panel="sports" hidden>
         <div class="card">
           <div class="card-head"><h2>Sports</h2></div>
-          <p class="muted small">Students can only pick sports that are in season today. If no sport is in season, they can pick any sport.</p>
+          <p class="muted small">Students can pick any sport. Sports in season today are listed first, under "In season".</p>
           <form class="inline-form" id="add-sport-form" style="margin-bottom:18px">
             <input id="new-sport" placeholder="New sport, e.g. Football" required maxlength="50">
             <button class="primary" type="submit">Add Sport</button>
@@ -113,6 +114,52 @@
       </section>
 
       <!-- Students -->
+      <section data-panel="workouts" hidden>
+        <div class="card">
+          <h2>Current Program</h2>
+          <div id="program-current" class="muted">Loading…</div>
+          <p class="muted small" style="margin-top:12px">
+            Each student gets the next day of the program every day they sign in, starting at Day 1.
+            Missing more than 5 days the weight room was open starts them over at Day 1.
+            After the last day they see "Program complete" until a new program is made active.
+          </p>
+        </div>
+
+        <div class="card">
+          <h2>Upload a Program</h2>
+          <p class="muted small">
+            PDF or Word (.docx). Each workout needs a heading like <strong>Monday: Weights</strong> above its table;
+            weights rows need a "sets x reps" column (e.g. <strong>5 x 3</strong>), running rows a plan (e.g. <strong>4 x 40 yd</strong>).
+            Workouts are used in the order they appear.
+          </p>
+          <div class="row">
+            <div class="field">
+              <label for="program-file">File</label>
+              <input id="program-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            </div>
+            <div class="field">
+              <label for="program-name">Program name</label>
+              <input id="program-name" maxlength="100" placeholder="e.g. Football 8-Week">
+            </div>
+          </div>
+          <div class="row" style="gap:8px;flex-wrap:nowrap">
+            <button type="button" id="program-preview" style="flex:0 0 auto">Preview</button>
+            <button type="button" class="primary" id="program-save" disabled style="flex:0 0 auto">Make Active</button>
+          </div>
+          <div id="program-result" style="margin-top:16px"></div>
+        </div>
+
+        <div class="card">
+          <h2>All Programs</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Days</th><th>Uploaded</th><th>Students</th><th></th></tr></thead>
+              <tbody id="program-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section data-panel="students" hidden>
         <div class="card">
           <div class="card-head">
@@ -121,7 +168,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>First</th><th>Last</th><th>Sport</th><th>Sign-ins</th><th>Last sign-in</th><th></th></tr></thead>
+              <thead><tr><th>First</th><th>Last</th><th>Sport</th><th>Sign-ins</th><th>Last sign-in</th><th>Workout</th><th></th></tr></thead>
               <tbody id="student-rows"></tbody>
             </table>
           </div>

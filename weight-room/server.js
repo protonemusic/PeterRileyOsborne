@@ -25,6 +25,8 @@ async function main() {
       appName: env.APP_NAME || 'Weight Room',
       secureCookies: env.SECURE_COOKIES === 'true',
       trustProxy: env.TRUST_PROXY === 'true',
+      // Optional: the site's address for QR codes (otherwise taken from the request).
+      publicUrl: env.PUBLIC_URL || '',
     },
   });
 

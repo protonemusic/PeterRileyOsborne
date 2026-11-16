@@ -66,6 +66,7 @@ const loaders = {
   students: () => loadSports().then(loadStudents),
   history: loadHistory,
   users: loadUsers,
+  workouts: loadPrograms,
   account: async () => {},
 };
 
@@ -342,7 +343,7 @@ function renderStudents() {
   body.replaceChildren();
   const shown = students.filter((s) => `${s.firstName} ${s.lastName}`.toLowerCase().includes(q));
   if (!shown.length) {
-    body.append(h('tr', {}, h('td', { colSpan: 6, className: 'muted' }, students.length ? 'No matches.' : 'No students have signed up yet.')));
+    body.append(h('tr', {}, h('td', { colSpan: 7, className: 'muted' }, students.length ? 'No matches.' : 'No students have signed up yet.')));
     return;
   }
   for (const s of shown) {
@@ -353,7 +354,19 @@ function renderStudents() {
       h('td', {}, first), h('td', {}, last), h('td', {}, sport),
       h('td', {}, String(s.signInCount)),
       h('td', { className: 'small' }, s.lastSignIn || '—'),
+      h('td', { className: 'small' }, s.workout || '—'),
       h('td', { className: 'actions' },
+        h('button', { className: 'link', title: "Open this student's workout page", onclick: () => act(async () => {
+          // Open the window first so iPad Safari doesn't block it as a pop-up.
+          const win = window.open('', '_blank');
+          const { url } = await api(`/api/admin/students/${s.id}/workout-link`, { method: 'POST', body: {} });
+          if (win) win.location = url; else location.href = url;
+        }) }, 'Workouts'),
+        h('button', { className: 'link', title: 'Make a new workout link; the old QR link stops working', onclick: () => act(async () => {
+          if (!confirm(`Make a new workout link for ${s.firstName}? Their old link stops working. They'll get the new one next time they sign in.`)) return;
+          await api(`/api/admin/students/${s.id}/workout-link`, { method: 'POST', body: { reset: true } });
+          flash(`New workout link made for ${s.firstName} ${s.lastName}.`, 'ok');
+        }) }, 'New Link'),
         h('button', { className: 'link', onclick: () => act(async () => {
           await api(`/api/admin/students/${s.id}`, {
             method: 'PUT', body: { firstName: first.value, lastName: last.value, sportId: sport.value || null },
@@ -441,6 +454,111 @@ $('import-run').addEventListener('click', () => act(async () => {
   $('import-run').disabled = true;
   await loadSports();
   renderSports();
+}));
+
+// ---------- workout programs ----------
+async function loadPrograms() {
+  const { programs } = await api('/api/admin/programs');
+  const active = programs.find((p) => p.active);
+  const cur = $('program-current');
+  cur.replaceChildren(active
+    ? h('div', {}, h('strong', {}, active.name), ` · ${active.totalDays} workouts · uploaded ${active.uploaded} · ${active.students} student${active.students === 1 ? '' : 's'} started`)
+    : h('span', {}, 'No program yet. Upload one below. Until then, students sign in without a workout.'));
+
+  const body = $('program-rows');
+  body.replaceChildren();
+  if (!programs.length) {
+    body.append(h('tr', {}, h('td', { colSpan: 5, className: 'muted' }, 'No programs uploaded yet.')));
+  }
+  for (const p of programs) {
+    body.append(h('tr', {},
+      h('td', {}, p.name, p.active ? h('span', { className: 'pill ok', style: 'margin-left:6px' }, 'Active') : null),
+      h('td', {}, String(p.totalDays)),
+      h('td', { className: 'small' }, p.uploaded),
+      h('td', {}, String(p.students)),
+      h('td', { className: 'actions' },
+        h('button', { className: 'link', onclick: () => act(async () => {
+          const { days } = await api(`/api/admin/programs/${p.id}/days`);
+          renderProgramDays($('program-result'), days, [], `${p.name}: ${days.length} workouts`);
+          $('program-save').disabled = true;
+          $('program-result').scrollIntoView({ behavior: 'smooth' });
+        }) }, 'View'),
+        p.active ? null : h('button', { className: 'link', onclick: () => act(async () => {
+          if (!confirm(`Make "${p.name}" the active program? Everyone starts it at Day 1 on their next sign-in.`)) return;
+          await api(`/api/admin/programs/${p.id}/activate`, { method: 'POST' });
+          await loadPrograms();
+        }) }, 'Make Active'),
+        h('button', { className: 'link danger', onclick: () => act(async () => {
+          if (!confirm(`Delete "${p.name}"? Students' logged workouts for this program are deleted too.`)) return;
+          await api(`/api/admin/programs/${p.id}`, { method: 'DELETE' });
+          await loadPrograms();
+        }) }, 'Delete')),
+    ));
+  }
+}
+
+function renderProgramDays(box, days, warnings, heading) {
+  box.replaceChildren(h('p', {}, h('strong', {}, heading)));
+  for (const w of warnings) box.append(h('div', { className: 'small', style: 'color:var(--warn)' }, w));
+  for (const d of days) {
+    box.append(h('details', { className: 'day-preview' },
+      h('summary', {}, h('strong', {}, `Day ${d.dayNumber}`), ` · ${d.label}`, h('span', { className: 'muted small' }, ` · ${d.items.length} ${d.kind === 'weights' ? 'lifts' : 'drills'}`)),
+      d.weekNote ? h('p', { className: 'muted small' }, d.weekNote) : null,
+      h('ul', { className: 'list' }, d.items.map((it) => h('li', {},
+        h('span', {}, it.code ? h('span', { className: 'muted' }, `${it.code} `) : null, it.priority ? h('strong', {}, `${it.name} ★`) : it.name),
+        h('span', { className: 'muted' }, it.prescription || it.plan || '')))),
+    ));
+  }
+}
+
+function programFile() {
+  const file = $('program-file').files[0];
+  if (!file) throw new Error('Please choose a PDF or Word file first');
+  return file;
+}
+
+async function uploadProgram(url, file) {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { location.replace('/login?next=/admin'); throw new Error('Please log in'); }
+  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  return data;
+}
+
+$('program-file').addEventListener('change', () => {
+  const file = $('program-file').files[0];
+  $('program-save').disabled = true;
+  $('program-result').replaceChildren();
+  if (file && !$('program-name').value) {
+    $('program-name').value = file.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/^\d{6,}-/, '').trim();
+  }
+});
+
+$('program-preview').addEventListener('click', () => act(async () => {
+  const file = programFile();
+  $('program-preview').disabled = true;
+  try {
+    const { days, warnings } = await uploadProgram('/api/admin/programs/preview', file);
+    renderProgramDays($('program-result'), days, warnings,
+      `Found ${days.length} workouts. Tap a day to check it. Nothing is saved until you tap Make Active.`);
+    $('program-save').disabled = false;
+  } finally {
+    $('program-preview').disabled = false;
+  }
+}));
+
+$('program-save').addEventListener('click', () => act(async () => {
+  const file = programFile();
+  const name = $('program-name').value.trim();
+  if (!name) throw new Error('Please give the program a name');
+  if (!confirm(`Make "${name}" the active program? Everyone starts it at Day 1 on their next sign-in.`)) return;
+  $('program-save').disabled = true;
+  const r = await uploadProgram(`/api/admin/programs?name=${encodeURIComponent(name)}&filename=${encodeURIComponent(file.name)}`, file);
+  flash(`"${name}" is now the active program (${r.days} workouts).`, 'ok');
+  $('program-file').value = '';
+  $('program-name').value = '';
+  $('program-result').replaceChildren();
+  await loadPrograms();
 }));
 
 // ---------- users ----------

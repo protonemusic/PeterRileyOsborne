@@ -7,6 +7,9 @@ const { tx } = require('./db');
 const { localDate, formatTime, formatDay, isValidDate } = require('./time');
 const users = require('./users');
 const { parseImport, applyImport, SEASON_NAMES } = require('./importer');
+const QRCode = require('qrcode');
+const workouts = require('./workouts');
+const { parseProgramFile, label: dayLabel } = require('./programParser');
 
 const COOKIE = 'wr_session';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -173,6 +176,40 @@ function createApp({ db, mailer, config }) {
     return p;
   }
 
+  // ---------- student workout dashboard (no login: the link's token is the key) ----------
+  const byToken = (token) => {
+    const t = String(token || '');
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(t)) throw notFound('Workout page');
+    return t;
+  };
+
+  app.get('/api/w/:token', (req, res) => {
+    const data = workouts.dashboard(db, byToken(req.params.token), today());
+    if (!data) throw notFound('Workout page');
+    res.setHeader('Cache-Control', 'no-store');
+    const { id, ...student } = data.student;
+    res.json({ ...data, student });
+  });
+
+  function tokenStudent(token) {
+    const st = db.prepare('SELECT id FROM students WHERE workout_token = ?').get(byToken(token));
+    if (!st) throw notFound('Workout page');
+    return st.id;
+  }
+
+  app.get('/api/w/:token/workouts/:id', (req, res) => {
+    const detail = workouts.workoutDetail(db, tokenStudent(req.params.token), toId(req.params.id), tz);
+    if (!detail) throw notFound('Workout');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ workout: detail });
+  });
+
+  app.put('/api/w/:token/workouts/:id', (req, res) => {
+    const ok = workouts.saveResults(db, tokenStudent(req.params.token), toId(req.params.id), req.body, now().toISOString());
+    if (!ok) throw notFound('Workout');
+    res.json({ ok: true });
+  });
+
   // ---------- admin API (staff + admin) ----------
   const admin = express.Router();
   admin.use(requireRole(STAFF));
@@ -221,7 +258,7 @@ function createApp({ db, mailer, config }) {
     });
   });
 
-  kiosk.post('/signin', (req, res) => {
+  kiosk.post('/signin', async (req, res) => {
     const studentId = toId(req.body?.studentId, 'student');
     const student = db.prepare('SELECT id, first_name, last_name, sport_id FROM students WHERE id = ?').get(studentId);
     if (!student) throw notFound('Student');
@@ -239,14 +276,37 @@ function createApp({ db, mailer, config }) {
     const last = db.prepare(`SELECT signed_in_at FROM sign_ins WHERE student_id = ?
       ORDER BY signed_in_at DESC LIMIT 1`).get(studentId);
     if (last && localDate(new Date(last.signed_in_at), tz) === today()) {
-      return res.json({ alreadySignedIn: true, name, time: formatTime(last.signed_in_at, tz) });
+      const workout = workouts.todaysWorkout(db, studentId, today());
+      return res.json({
+        alreadySignedIn: true, name, time: formatTime(last.signed_in_at, tz),
+        ...(await workoutLink(req, studentId, workout)),
+      });
     }
 
     const signedInAt = now().toISOString();
-    db.prepare('INSERT INTO sign_ins (student_id, sport_id, signed_in_at) VALUES (?, ?, ?)')
-      .run(studentId, sportId, signedInAt);
-    res.status(201).json({ alreadySignedIn: false, name, time: formatTime(signedInAt, tz) });
+    const { workout, signedIn } = tx(db, () => {
+      const r = db.prepare('INSERT INTO sign_ins (student_id, sport_id, signed_in_at) VALUES (?, ?, ?)')
+        .run(studentId, sportId, signedInAt);
+      const signInId = Number(r.lastInsertRowid);
+      return { signedIn: signInId, workout: workouts.assignWorkout(db, { studentId, signInId, today: today(), tz }) };
+    });
+    res.status(201).json({
+      alreadySignedIn: false, name, time: formatTime(signedInAt, tz), signInId: signedIn,
+      ...(await workoutLink(req, studentId, workout)),
+    });
   });
+
+  /** The workout summary plus the student's dashboard link and its QR code, for the kiosk. */
+  async function workoutLink(req, studentId, { status, workout }) {
+    if (status === 'none') return { workout: { status } };
+    const url = `${baseUrl(req)}/w/${workouts.ensureToken(db, studentId)}`;
+    const qrSvg = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+    return { workout: { status, ...(workout || {}) }, dashboardUrl: url, qrSvg };
+  }
+
+  function baseUrl(req) {
+    return (config.publicUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  }
 
   admin.get('/me', (req, res) => {
     res.json({ user: publicUser(req.user), emailConfigured: mailer.configured, today: today(), timeZone: tz });
@@ -391,6 +451,7 @@ function createApp({ db, mailer, config }) {
     res.json({
       students: students.map((s) => ({
         ...s,
+        workout: workouts.progressFor(db, s.id),
         lastSignIn: s.lastSignIn ? `${formatDay(s.lastSignIn, tz)}, ${formatTime(s.lastSignIn, tz)}` : null,
       })),
     });
@@ -407,6 +468,78 @@ function createApp({ db, mailer, config }) {
     const r = db.prepare('UPDATE students SET first_name = ?, last_name = ?, sport_id = ? WHERE id = ?')
       .run(firstName, lastName, sportId, id);
     if (r.changes === 0) throw notFound('Student');
+    res.json({ ok: true });
+  });
+
+  admin.post('/students/:id/workout-link', (req, res) => {
+    const id = toId(req.params.id);
+    if (!db.prepare('SELECT 1 FROM students WHERE id = ?').get(id)) throw notFound('Student');
+    const token = req.body?.reset === true ? workouts.resetToken(db, id) : workouts.ensureToken(db, id);
+    res.json({ url: `${baseUrl(req)}/w/${token}` });
+  });
+
+  // ---------- workout programs ----------
+  const upload = express.raw({ type: () => true, limit: '20mb' });
+
+  async function parseUpload(req) {
+    if (!req.body?.length) throw bad('Please choose a file to upload');
+    try {
+      return await parseProgramFile(req.body);
+    } catch (err) {
+      if (err.userFacing) throw bad(err.message);
+      console.error(err);
+      throw bad("That file couldn't be read. Make sure it's a PDF or Word .docx file.");
+    }
+  }
+
+  const describeDay = (d) => ({
+    dayNumber: d.dayNumber, label: dayLabel(d), kind: d.kind, weekTitle: d.weekTitle, weekNote: d.weekNote,
+    items: d.items,
+  });
+
+  admin.post('/programs/preview', upload, async (req, res) => {
+    const { days, warnings } = await parseUpload(req);
+    res.json({ days: days.map(describeDay), warnings });
+  });
+
+  admin.post('/programs', upload, async (req, res) => {
+    const name = String(req.query.name || '').trim().slice(0, 100);
+    if (!name) throw bad('Please give the program a name');
+    const { days } = await parseUpload(req);
+    const filename = String(req.query.filename || '').slice(0, 200);
+    const id = workouts.saveProgram(db, { name, filename, days }, now().toISOString());
+    res.status(201).json({ id, days: days.length });
+  });
+
+  admin.get('/programs', (_req, res) => {
+    const programs = db.prepare(`SELECT p.id, p.name, p.filename, p.created_at AS createdAt, p.active,
+        (SELECT COUNT(*) FROM program_days d WHERE d.program_id = p.id) AS totalDays,
+        (SELECT COUNT(DISTINCT student_id) FROM student_workouts w WHERE w.program_id = p.id) AS students
+      FROM programs p ORDER BY p.created_at DESC`).all();
+    res.json({
+      programs: programs.map((p) => ({ ...p, active: Boolean(p.active), uploaded: formatDay(p.createdAt, tz) })),
+    });
+  });
+
+  admin.get('/programs/:id/days', (req, res) => {
+    const id = toId(req.params.id);
+    const rows = db.prepare('SELECT day_number FROM program_days WHERE program_id = ? ORDER BY day_number').all(id);
+    if (!rows.length) throw notFound('Program');
+    res.json({ days: rows.map((r) => describeDay(workouts.getProgramDay(db, id, r.day_number))) });
+  });
+
+  admin.post('/programs/:id/activate', (req, res) => {
+    const id = toId(req.params.id);
+    if (!db.prepare('SELECT 1 FROM programs WHERE id = ?').get(id)) throw notFound('Program');
+    tx(db, () => {
+      db.exec('UPDATE programs SET active = 0');
+      db.prepare('UPDATE programs SET active = 1 WHERE id = ?').run(id);
+    });
+    res.json({ ok: true });
+  });
+
+  admin.delete('/programs/:id', (req, res) => {
+    if (db.prepare('DELETE FROM programs WHERE id = ?').run(toId(req.params.id)).changes === 0) throw notFound('Program');
     res.json({ ok: true });
   });
 
@@ -614,6 +747,11 @@ function createApp({ db, mailer, config }) {
   };
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
   app.get('/login', page('login.html'));
+  app.get('/w/:token', (req, res) => {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Robots-Tag', 'noindex');
+    page('workout.html')(req, res);
+  });
   app.get('/', page('index.html', ANYONE));
   app.get('/admin', page('admin.html', STAFF));
   app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));

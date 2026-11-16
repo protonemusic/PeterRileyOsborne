@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>My Workouts</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="dash">
+  <main class="wrap">
+    <header class="dash-head">
+      <h1 id="student-name">My Workouts</h1>
+      <div class="muted" id="student-sport"></div>
+    </header>
+
+    <div id="dash-msg" class="message" hidden></div>
+    <div id="complete-banner" class="message ok" hidden>
+      <strong>Program complete!</strong> You finished every workout. Nice work.
+    </div>
+
+    <section class="card" id="workout" hidden>
+      <div class="eyebrow" id="w-eyebrow"></div>
+      <h2 id="w-label"></h2>
+      <p class="muted small" id="w-note"></p>
+      <div id="w-restarted" class="message warn small" hidden>
+        You missed more than 5 weight room days, so you started over at Day 1.
+      </div>
+      <form id="w-form" autocomplete="off">
+        <div id="w-items"></div>
+        <div class="field">
+          <label for="w-notes">Notes (how it felt, personal bests)</label>
+          <textarea id="w-notes" rows="3" maxlength="1000"></textarea>
+        </div>
+        <div class="save-row">
+          <span class="muted small" id="w-status" aria-live="polite"></span>
+          <button type="button" class="primary big" id="w-finish">Finish Workout</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" id="empty" hidden>
+      <h2>No workouts yet</h2>
+      <p class="muted">Your workouts show up here after you sign in at the weight room.</p>
+    </section>
+
+    <section class="card" id="history-card" hidden>
+      <h2>Workout History</h2>
+      <ul class="history" id="history"></ul>
+    </section>
+  </main>
+  <script src="/workout.js"></script>
+</body>
+</html>

@@ -195,6 +195,10 @@ test('sign up, search by name, sign in once per day', async () => {
     const r = await t.call('POST', '/api/signup', { firstName: '  Jordan ', lastName: 'Lee', sportId: football.id });
     assert.equal(r.status, 201);
     assert.equal(r.body.student.firstName, 'Jordan');
+    // Signing up also signs them in.
+    assert.equal(r.body.signedIn, true);
+    assert.equal(r.body.time, '2:30 PM');
+    assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM sign_ins').get().n, 1);
 
     const dup = await t.call('POST', '/api/signup', { firstName: 'jordan', lastName: 'LEE', sportId: football.id });
     assert.equal(dup.status, 409);
@@ -209,7 +213,8 @@ test('sign up, search by name, sign in once per day', async () => {
 
     const id = r.body.student.id;
     const first = await t.call('POST', '/api/signin', { studentId: id });
-    assert.equal(first.status, 201);
+    assert.equal(first.status, 200);
+    assert.equal(first.body.alreadySignedIn, true);
     assert.equal(first.body.time, '2:30 PM');
 
     t.clock.now = new Date('2026-11-17T01:00:00Z'); // 5 PM same local day
@@ -228,10 +233,12 @@ test('changing sport at sign-in updates the student', async () => {
   try {
     const { football, track } = await seed(t);
     const s = (await t.call('POST', '/api/signup', { firstName: 'Sam', lastName: 'Ortiz', sportId: football.id })).body.student;
+    t.clock.now = new Date('2026-11-17T22:00:00Z'); // next day
+    await t.login();
     await t.call('POST', '/api/signin', { studentId: s.id, sportId: track.id });
     const row = t.db.prepare('SELECT sport_id FROM students WHERE id = ?').get(s.id);
     assert.equal(row.sport_id, track.id);
-    const si = t.db.prepare('SELECT sport_id FROM sign_ins WHERE student_id = ?').get(s.id);
+    const si = t.db.prepare('SELECT sport_id FROM sign_ins WHERE student_id = ? ORDER BY id DESC').get(s.id);
     assert.equal(si.sport_id, track.id);
   } finally { await t.close(); }
 });
@@ -362,5 +369,20 @@ test('import endpoint, coaches without email, and editing a coach', async () => 
     results = (await t.call('POST', '/api/admin/notify')).body.results;
     assert.deepEqual(results.map((x) => [x.sportName, x.status]), [['Girls Soccer', 'sent']]);
     assert.deepEqual(t.sent[1].to, ['"Colin Hay" <hay@school.org>']);
+  } finally { await t.close(); }
+});
+
+test('the kiosk Admin link asks for the password again', async () => {
+  const t = await setup();
+  try {
+    await t.login('kiosk');
+    assert.equal((await t.call('POST', '/api/confirm-password', { password: 'kiosk-pass' })).status, 403);
+    await t.login('staff');
+    assert.equal((await t.call('POST', '/api/confirm-password', { password: 'nope' })).status, 401);
+    assert.equal((await t.call('POST', '/api/confirm-password', { password: 'staff-pass' })).status, 200);
+    await t.login('admin');
+    assert.equal((await t.call('POST', '/api/confirm-password', { password: 'admin-pass' })).status, 200);
+    t.logout();
+    assert.equal((await t.call('POST', '/api/confirm-password', { password: 'admin-pass' })).status, 401);
   } finally { await t.close(); }
 });

@@ -93,9 +93,19 @@ function renderWorkout() {
   const box = $('w-items');
   box.replaceChildren();
 
+  // A checkbox row: warm-up, cool-down, orientation.
+  const checkRow = (name, plan, checked, onChange) => h('div', { className: 'exercise' },
+    h('label', { className: 'drill' },
+      h('input', { type: 'checkbox', checked, onchange: (e) => { onChange(e.target.checked); queueSave(); } }),
+      h('span', {}, h('span', { className: 'exercise-name' }, name), plan ? h('span', { className: 'small muted' }, ` ${plan}`) : null)));
+
+  if (w.warmup) box.append(checkRow(w.warmup.name, w.warmup.plan, w.results.warmup, (v) => { w.results.warmup = v; }));
+
   w.items.forEach((item, i) => {
     const r = w.results.items[i];
-    if (w.kind === 'weights') {
+    if (item.type === 'check') {
+      box.append(checkRow(item.name, item.plan, r.done, (v) => { r.done = v; }));
+    } else if (w.kind === 'weights' || w.kind === 'test') {
       const repsHint = (item.reps.match(/^\d+(-\d+)?/) || [''])[0];
       // Timed holds ("30-45 sec", "30 sec each") are entered as a time, not reps.
       const timedGoal = /\b(sec|secs|seconds|min|mins|minutes)\b/i.test(item.reps) ? item.reps : '';
@@ -107,6 +117,7 @@ function renderWorkout() {
             h('div', { className: 'small muted' }, item.prescription)),
         ),
         item.lastTime ? h('div', { className: 'small last-time' }, `Last time: ${item.lastTime}`) : null,
+        item.test ? h('div', { className: 'one-rm small', ariaLive: 'polite', id: `orm-${i}` }) : null,
         h('div', { className: 'sets' },
           r.sets.map((set, s) => {
             const id = `w${i}-s${s}`;
@@ -118,14 +129,14 @@ function renderWorkout() {
                   h('label', { htmlFor: `${id}-weight` }, 'Weight (lb)'),
                   h('input', {
                     id: `${id}-weight`, inputMode: 'decimal', value: set.weight, maxLength: 12,
-                    oninput: (e) => { set.weight = e.target.value; queueSave(); },
+                    oninput: (e) => { set.weight = e.target.value; queueSave(); if (item.test) showOneRepMax(i, set); },
                   })),
                 h('div', { className: 'set-field' },
                   h('label', { htmlFor: `${id}-reps` }, timedGoal ? `Time · goal ${timedGoal}`
                     : repsHint ? `Reps · goal ${repsHint}` : 'Reps / amount'),
                   h('input', {
                     id: `${id}-reps`, inputMode: repsHint && !timedGoal ? 'numeric' : 'text', value: set.reps, maxLength: 12,
-                    oninput: (e) => { set.reps = e.target.value; queueSave(); },
+                    oninput: (e) => { set.reps = e.target.value; queueSave(); if (item.test) showOneRepMax(i, set); },
                   }))));
           })),
       ));
@@ -143,8 +154,22 @@ function renderWorkout() {
       ));
     }
   });
+  if (w.cooldown) box.append(checkRow(w.cooldown.name, w.cooldown.plan, w.results.cooldown, (v) => { w.results.cooldown = v; }));
+  w.items.forEach((item, i) => { if (item.test) showOneRepMax(i, w.results.items[i].sets[0]); });
   renderFinish();
   $('w-status').textContent = '';
+}
+
+/** Estimated 1 rep max from a 6-rep set to failure: weight × 1.18 (6 reps ≈ 85% of a 1 rep max). */
+function showOneRepMax(i, set) {
+  const el = $(`orm-${i}`);
+  if (!el) return;
+  const weight = parseFloat(String(set?.weight || '').replace(/[^\d.]/g, ''));
+  if (!weight) { el.textContent = 'Estimated 1 rep max: enter the weight you did 6 reps with'; el.classList.remove('has-value'); return; }
+  const est = Math.round(weight * current.oneRepMaxFactor);
+  const reps = parseInt(set.reps, 10);
+  el.textContent = `Estimated 1 rep max: ${est} lb${reps && reps !== 6 ? ' (assumes 6 reps)' : ''}`;
+  el.classList.add('has-value');
 }
 
 function renderFinish() {

@@ -5,7 +5,8 @@ their name and picking it from a list. An admin page shows who came in, and one 
 button emails each sport's coaches a list of their athletes who signed in.
 
 - **Kiosk** (`/`): set it up on an iPad at the door.
-  - **Sign Up:** first name, last name and current sport.
+  - **Sign Up:** first name, last name and current sport. Signing up also signs the student in
+    for their first day ("Sign-up Successful! You are now signed in for your first day!").
   - **Sign In:** type part of your name, tap it, tap **Sign In**. The sign-in time is saved.
     Students can change their sport here when seasons change. Signing in twice on the same day
     doesn't create a duplicate.
@@ -36,6 +37,14 @@ button emails each sport's coaches a list of their athletes who signed in.
    drills) and their workout history, plus what they lifted last time for each exercise.
 3. Each weight room day a student signs in, they get the next workout (Day 1, Day 2, …). Signing in
    twice in one day doesn't skip ahead.
+   - **Day 1** is orientation and strength testing: an "Orientation completed" checkbox plus Bench
+     Press, Squat and Deadlift for 6 reps to failure. The page shows the estimated 1 rep max
+     (weight × 1.18, since 6 reps is about 85% of a 1 rep max).
+   - The **last day** is the same strength test, showing each student's Day 1 numbers as "last time".
+   - These two days are added to every program automatically, so the 40-day football program is 42 days.
+   - Every workout has the warm-up and cool-down from the program's session clock: lifting and
+     testing days start with a 5 min warm-up and end with a 3 min stretch; running days (which
+     already start with 8 min of form work) end with a 4 min cool-down. Students check them off.
 4. Missing **more than 5 days the weight room was open** (days anyone signed in) starts them over at
    Day 1. Weekends, holidays and breaks don't count.
 5. After the last day they see **Program complete** until a new program is made active. Making a new
@@ -51,6 +60,10 @@ If a student's link is shared, use **New Link** on the Students tab; the old lin
 they get the new QR code next time they sign in.
 
 ## Accounts and roles
+
+On the kiosk, the **Admin** link only shows when a staff or admin account is logged in, and it asks
+for that account's password before opening the admin page.
+
 
 | Role  | Can do |
 |-------|--------|

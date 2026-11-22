@@ -195,7 +195,8 @@ $('signup-form').addEventListener('submit', async (e) => {
   const btn = e.submitter;
   btn.disabled = true;
   try {
-    const { student } = await api('/api/signup', {
+    // Signing up also signs the student in for their first day.
+    const data = await api('/api/signup', {
       method: 'POST',
       body: {
         firstName: $('first-name').value,
@@ -205,9 +206,8 @@ $('signup-form').addEventListener('submit', async (e) => {
     });
     resetSignUp();
     resetSignIn();
-    showPanel('signin');
-    choose(student);
-    showMessage($('signin-msg'), "You're signed up! Now tap Sign In.", 'ok');
+    showBanner('Sign-up Successful! You are now signed in for your first day!');
+    showSuccess(`Welcome, ${data.student.firstName}!`, `Signed in at ${data.time}. Have a great lift.`, data);
   } catch (err) {
     showMessage($('signup-msg'), err.message);
   } finally {
@@ -247,16 +247,53 @@ function showSuccess(title, detail, data = {}) {
 }
 function finish() {
   clearTimeout(successTimer);
+  showBanner('');
   resetSignIn();
   showPanel('signin');
   loadSports();
+}
 
-// The Admin link only appears for staff and admins, never on a kiosk (student) account.
-api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role === 'kiosk'; }).catch(() => {});
+function showBanner(text) {
+  $('top-banner').textContent = text;
+  $('top-banner').hidden = !text;
 }
 $('success-done').addEventListener('click', finish);
 
 loadSports();
 
-// The Admin link only appears for staff and admins, never on a kiosk (student) account.
-api('/api/me').then(({ user }) => { $('admin-link').hidden = user.role === 'kiosk'; }).catch(() => {});
+// ---------- Admin link ----------
+// Only staff and admins see it (never a kiosk/student account), and it asks for the
+// password again so nobody at the kiosk can open the admin page.
+let me = null;
+api('/api/me').then(({ user }) => { me = user; $('admin-link').hidden = user.role === 'kiosk'; }).catch(() => {});
+
+$('admin-open').addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!me || me.role === 'kiosk') return;
+  $('admin-who').textContent = me.name || me.email;
+  $('admin-password').value = '';
+  showMessage($('admin-msg'), '');
+  $('admin-dialog').showModal();
+  $('admin-password').focus();
+});
+$('admin-cancel').addEventListener('click', () => $('admin-dialog').close());
+$('admin-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.submitter;
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/confirm-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: $('admin-password').value }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Wrong password');
+    location.href = '/admin';
+  } catch (err) {
+    showMessage($('admin-msg'), err.message);
+    $('admin-password').select();
+  } finally {
+    btn.disabled = false;
+  }
+});

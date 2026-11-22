@@ -194,7 +194,8 @@ function parseRows(rows) {
 }
 
 function label(d) {
-  return [d.week != null ? `Week ${d.week}` : null, `${d.weekday}: ${d.title}`].filter(Boolean).join(' · ');
+  const day = d.weekday ? `${d.weekday}: ${d.title}` : d.title;
+  return [d.week != null ? `Week ${d.week}` : null, day].filter(Boolean).join(' · ');
 }
 
 async function parseProgramFile(buffer) {

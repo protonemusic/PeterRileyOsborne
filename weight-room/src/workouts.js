@@ -8,19 +8,88 @@ const { label } = require('./programParser');
 /** Missing more than this many weight room days in a row starts a student over at Day 1. */
 const MAX_MISSED_DAYS = 5;
 
+/** Warm-up: every day. */
+const WARMUP = {
+  name: 'Warm-up',
+  plan: '5 min',
+  steps: [
+    'Easy Jog', 'High Knees', 'Butt Kicks', 'Walking Knee Hugs', 'Walking Lunge with Twist',
+    "Frankenstein's", 'Lateral Shuffle', 'Inchworm to Spiderman', 'Arm Circles', 'Body Weight Squats',
+  ],
+};
+/** Cool-down: every day. */
+const COOLDOWN_STEPS = [
+  'Hamstring Stretch', 'Half-kneeling hip flexor stretch', 'Figure-4 Glute Stretch', 'Butterflies',
+  'Calf/Achilles Stretch', 'Cross-body shoulder stretch', "Child's Pose",
+];
+const ROUTINES = {
+  weights: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '3 min', steps: COOLDOWN_STEPS } },
+  test: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '3 min', steps: COOLDOWN_STEPS } },
+  run: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '4 min', steps: COOLDOWN_STEPS } },
+};
+const routineFor = (kind) => ROUTINES[kind] || { warmup: null, cooldown: null };
+
+// ---------- strength testing (first and last day of every program) ----------
+/** Estimated 1 rep max from a 6-rep set to failure: 6 reps is about 85% of a 1 rep max (x 1.18). */
+const ONE_REP_MAX_FACTOR = 1.18;
+const TEST_LIFTS = ['Bench Press', 'Squat', 'Deadlift'];
+
+function testDay(first) {
+  return {
+    week: null,
+    weekTitle: '',
+    weekNote: 'Work up to a weight you can lift for 6 reps, then do 6 reps to failure. '
+      + 'Your estimated 1 rep max is that weight × 1.18 (6 reps ≈ 85% of a 1 rep max).',
+    weekday: '',
+    title: first ? 'Orientation & Strength Testing' : 'Final Strength Testing',
+    kind: 'test',
+    items: [
+      ...(first ? [{ type: 'check', name: 'Orientation completed', plan: 'Weight room rules, safety and how to use this page' }] : []),
+      ...TEST_LIFTS.map((name) => ({ name, sets: 1, reps: '6 to failure', prescription: '6 reps to failure', test: true })),
+    ],
+  };
+}
+
+/** The uploaded days with a testing day added before the first and after the last. */
+function withTestDays(days) {
+  const middle = days.filter((d) => d.kind !== 'test');
+  return [testDay(true), ...middle, testDay(false)].map((d, i) => ({ ...d, dayNumber: i + 1 }));
+}
+
+/** Programs saved before testing days existed get them added; everyone's place is kept. */
+function addMissingTestDays(db) {
+  const programs = db.prepare(`SELECT id FROM programs p WHERE NOT EXISTS
+    (SELECT 1 FROM program_days d WHERE d.program_id = p.id AND d.kind = 'test')`).all();
+  for (const { id } of programs) {
+    tx(db, () => {
+      // Shift every day up by one (via negative numbers to keep day numbers unique on the way).
+      db.prepare('UPDATE program_days SET day_number = -day_number - 1 WHERE program_id = ?').run(id);
+      db.prepare('UPDATE program_days SET day_number = -day_number WHERE program_id = ?').run(id);
+      db.prepare('UPDATE student_workouts SET day_number = day_number + 1 WHERE program_id = ?').run(id);
+      const last = db.prepare('SELECT MAX(day_number) AS n FROM program_days WHERE program_id = ?').get(id).n || 1;
+      insertDay(db, id, { ...testDay(true), dayNumber: 1 });
+      insertDay(db, id, { ...testDay(false), dayNumber: last + 1 });
+    });
+  }
+  return programs.length;
+}
+
+function insertDay(db, programId, d) {
+  db.prepare(`INSERT INTO program_days
+    (program_id, day_number, week, week_title, week_note, weekday, title, kind, items)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(programId, d.dayNumber, d.week ?? null, d.weekTitle || '',
+    d.weekNote || '', d.weekday || '', d.title || '', d.kind, JSON.stringify(d.items));
+}
+
 // ---------- programs ----------
+/** Saves uploaded days (testing days are added here) as the new active program. */
 function saveProgram(db, { name, filename, days }, nowIso) {
+  days = withTestDays(days);
   return tx(db, () => {
     db.exec('UPDATE programs SET active = 0');
     const programId = Number(db.prepare('INSERT INTO programs (name, filename, created_at, active) VALUES (?, ?, ?, 1)')
       .run(name, filename || '', nowIso).lastInsertRowid);
-    const insert = db.prepare(`INSERT INTO program_days
-      (program_id, day_number, week, week_title, week_note, weekday, title, kind, items)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    for (const d of days) {
-      insert.run(programId, d.dayNumber, d.week, d.weekTitle || '', d.weekNote || '', d.weekday || '',
-        d.title || '', d.kind, JSON.stringify(d.items));
-    }
+    for (const d of days) insertDay(db, programId, d);
     return programId;
   });
 }
@@ -116,19 +185,6 @@ function assignWorkout(db, { studentId, signInId, today, tz }) {
   return { status: 'assigned', workout: summarize(db, db.prepare('SELECT * FROM student_workouts WHERE id = ?').get(id), program) };
 }
 
-/** Today's workout for a student who already signed in (or the program-complete state). */
-function todaysWorkout(db, studentId, today) {
-  const program = activeProgram(db);
-  const row = db.prepare(`SELECT * FROM student_workouts WHERE student_id = ? AND assigned_date = ?
-    ORDER BY id DESC LIMIT 1`).get(studentId, today);
-  if (row) return { status: 'assigned', workout: summarize(db, row, program) };
-  if (!program) return { status: 'none', workout: null };
-  const last = db.prepare(`SELECT day_number FROM student_workouts WHERE student_id = ? AND program_id = ?
-    ORDER BY assigned_date DESC, id DESC LIMIT 1`).get(studentId, program.id);
-  if (last && last.day_number >= program.totalDays) return { status: 'complete', workout: null };
-  return { status: 'none', workout: null };
-}
-
 /** Where a student is in the active program, for the admin Students list. */
 function progressFor(db, studentId) {
   const program = activeProgram(db);
@@ -145,10 +201,18 @@ const str = (v, max) => (v == null ? '' : String(v).slice(0, max));
 /** Keep only the expected shape, as short strings, for the given day. */
 function cleanResults(day, input) {
   const items = Array.isArray(input?.items) ? input.items : [];
-  const out = { notes: str(input?.notes, 1000), items: [] };
+  const routine = routineFor(day.kind);
+  const out = {
+    notes: str(input?.notes, 1000),
+    warmup: routine.warmup ? Boolean(input?.warmup) : false,
+    cooldown: routine.cooldown ? Boolean(input?.cooldown) : false,
+    items: [],
+  };
   day.items.forEach((item, i) => {
     const r = items[i] || {};
-    if (day.kind === 'weights') {
+    if (item.type === 'check') {
+      out.items.push({ done: Boolean(r.done) });
+    } else if (day.kind === 'weights' || day.kind === 'test') {
       const sets = Array.isArray(r.sets) ? r.sets : [];
       out.items.push({
         sets: Array.from({ length: item.sets }, (_, s) => ({
@@ -167,12 +231,13 @@ function lastTimeFor(db, studentId, workoutId, names) {
   const want = new Map(names.map((n) => [n.toLowerCase(), null]));
   const rows = db.prepare(`SELECT sw.results, d.items, d.kind FROM student_workouts sw
     JOIN program_days d ON d.program_id = sw.program_id AND d.day_number = sw.day_number
-    WHERE sw.student_id = ? AND sw.id <> ? AND sw.results IS NOT NULL AND d.kind = 'weights'
+    WHERE sw.student_id = ? AND sw.id <> ? AND sw.results IS NOT NULL AND d.kind IN ('weights', 'test')
     ORDER BY sw.assigned_date DESC, sw.id DESC LIMIT 60`).all(studentId, workoutId);
   for (const row of rows) {
     const items = JSON.parse(row.items);
     const results = JSON.parse(row.results);
     items.forEach((item, i) => {
+      if (item.type === 'check') return;
       const key = item.name.toLowerCase();
       if (!want.has(key) || want.get(key)) return;
       const sets = (results.items?.[i]?.sets || []).filter((s) => s.weight || s.reps);
@@ -188,7 +253,8 @@ function workoutDetail(db, studentId, workoutId, tz) {
   const day = getProgramDay(db, row.program_id, row.day_number);
   if (!day) return null;
   const results = row.results ? JSON.parse(row.results) : null;
-  const last = day.kind === 'weights' ? lastTimeFor(db, studentId, row.id, day.items.map((i) => i.name)) : new Map();
+  const lifts = day.items.filter((i) => i.type !== 'check').map((i) => i.name);
+  const last = day.kind === 'weights' || day.kind === 'test' ? lastTimeFor(db, studentId, row.id, lifts) : new Map();
   const totalDays = db.prepare('SELECT COUNT(*) AS n FROM program_days WHERE program_id = ?').get(row.program_id).n;
   return {
     id: row.id,
@@ -201,6 +267,8 @@ function workoutDetail(db, studentId, workoutId, tz) {
     weekTitle: day.weekTitle,
     weekNote: day.weekNote,
     kind: day.kind,
+    ...routineFor(day.kind),
+    oneRepMaxFactor: ONE_REP_MAX_FACTOR,
     items: day.items.map((item) => ({ ...item, lastTime: last.get(item.name.toLowerCase()) || null })),
     results: cleanResults(day, results || {}),
   };
@@ -246,6 +314,6 @@ function dashboard(db, token, today) {
 }
 
 module.exports = {
-  MAX_MISSED_DAYS, saveProgram, activeProgram, getProgramDay, ensureToken, resetToken, openDaysBetween,
-  assignWorkout, todaysWorkout, progressFor, workoutDetail, saveResults, dashboard,
+  MAX_MISSED_DAYS, ONE_REP_MAX_FACTOR, withTestDays, addMissingTestDays, saveProgram, activeProgram, getProgramDay, ensureToken, resetToken, openDaysBetween,
+  assignWorkout, progressFor, workoutDetail, saveResults, dashboard,
 };

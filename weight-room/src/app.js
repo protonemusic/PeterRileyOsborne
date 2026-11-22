@@ -46,6 +46,7 @@ function createApp({ db, mailer, config }) {
   const tz = config.timeZone;
   const now = config.now || (() => new Date());
   const today = () => localDate(now(), tz);
+  workouts.addMissingTestDays(db);
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
@@ -152,6 +153,18 @@ function createApp({ db, mailer, config }) {
     res.json({ ok: true });
   });
 
+  // The kiosk asks for the logged-in staff/admin's password again before opening the admin page.
+  app.post('/api/confirm-password', requireRole(['admin', 'staff']), async (req, res) => {
+    checkLoginRate(req.ip);
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!(await users.verifyPassword(req.body?.password, row.password_hash))) {
+      recordFailure(req.ip);
+      throw new HttpError(401, 'Wrong password');
+    }
+    failures.delete(req.ip);
+    res.json({ ok: true });
+  });
+
   app.get('/api/me', requireRole(ANYONE), (req, res) => {
     res.json({ user: publicUser(req.user) });
   });
@@ -242,7 +255,7 @@ function createApp({ db, mailer, config }) {
     res.json({ students });
   });
 
-  kiosk.post('/signup', (req, res) => {
+  kiosk.post('/signup', async (req, res) => {
     const firstName = cleanName(req.body?.firstName, 'First name');
     const lastName = cleanName(req.body?.lastName, 'Last name');
     const sport = requireSport(req.body?.sportId);
@@ -251,12 +264,28 @@ function createApp({ db, mailer, config }) {
     if (existing) {
       throw new HttpError(409, `${firstName} ${lastName} is already signed up. Use Sign In instead.`);
     }
-    const { lastInsertRowid } = db.prepare(`INSERT INTO students (first_name, last_name, sport_id, created_at)
-      VALUES (?, ?, ?, ?)`).run(firstName, lastName, sport.id, now().toISOString());
+    // Signing up also signs the student in for their first day.
+    const { studentId, signInId, workout, signedInAt } = tx(db, () => {
+      const id = Number(db.prepare(`INSERT INTO students (first_name, last_name, sport_id, created_at)
+        VALUES (?, ?, ?, ?)`).run(firstName, lastName, sport.id, now().toISOString()).lastInsertRowid);
+      return { studentId: id, ...recordSignIn(id, sport.id) };
+    });
     res.status(201).json({
-      student: { id: Number(lastInsertRowid), firstName, lastName, sportId: sport.id, sportName: sport.name },
+      student: { id: studentId, firstName, lastName, sportId: sport.id, sportName: sport.name },
+      signedIn: true, alreadySignedIn: false, name: `${firstName} ${lastName}`,
+      time: formatTime(signedInAt, tz), signInId,
+      ...(await workoutLink(req, studentId, workout)),
     });
   });
+
+  /** Insert a sign-in for now and give the student today's workout. Call inside a transaction. */
+  function recordSignIn(studentId, sportId) {
+    const signedInAt = now().toISOString();
+    const signInId = Number(db.prepare('INSERT INTO sign_ins (student_id, sport_id, signed_in_at) VALUES (?, ?, ?)')
+      .run(studentId, sportId, signedInAt).lastInsertRowid);
+    const workout = workouts.assignWorkout(db, { studentId, signInId, today: today(), tz });
+    return { signInId, signedInAt, workout };
+  }
 
   kiosk.post('/signin', async (req, res) => {
     const studentId = toId(req.body?.studentId, 'student');
@@ -273,25 +302,21 @@ function createApp({ db, mailer, config }) {
     if (sportId == null) throw bad('Please choose your current sport');
 
     const name = `${student.first_name} ${student.last_name}`;
-    const last = db.prepare(`SELECT signed_in_at FROM sign_ins WHERE student_id = ?
+    const last = db.prepare(`SELECT id, signed_in_at FROM sign_ins WHERE student_id = ?
       ORDER BY signed_in_at DESC LIMIT 1`).get(studentId);
     if (last && localDate(new Date(last.signed_in_at), tz) === today()) {
-      const workout = workouts.todaysWorkout(db, studentId, today());
+      // Gives them today's workout if they don't have one yet (e.g. they signed in
+      // before a program was made active); otherwise returns the one they already have.
+      const workout = workouts.assignWorkout(db, { studentId, signInId: last.id, today: today(), tz });
       return res.json({
         alreadySignedIn: true, name, time: formatTime(last.signed_in_at, tz),
         ...(await workoutLink(req, studentId, workout)),
       });
     }
 
-    const signedInAt = now().toISOString();
-    const { workout, signedIn } = tx(db, () => {
-      const r = db.prepare('INSERT INTO sign_ins (student_id, sport_id, signed_in_at) VALUES (?, ?, ?)')
-        .run(studentId, sportId, signedInAt);
-      const signInId = Number(r.lastInsertRowid);
-      return { signedIn: signInId, workout: workouts.assignWorkout(db, { studentId, signInId, today: today(), tz }) };
-    });
+    const { signInId, signedInAt, workout } = tx(db, () => recordSignIn(studentId, sportId));
     res.status(201).json({
-      alreadySignedIn: false, name, time: formatTime(signedInAt, tz), signInId: signedIn,
+      alreadySignedIn: false, name, time: formatTime(signedInAt, tz), signInId,
       ...(await workoutLink(req, studentId, workout)),
     });
   });
@@ -499,7 +524,7 @@ function createApp({ db, mailer, config }) {
 
   admin.post('/programs/preview', upload, async (req, res) => {
     const { days, warnings } = await parseUpload(req);
-    res.json({ days: days.map(describeDay), warnings });
+    res.json({ days: workouts.withTestDays(days).map(describeDay), warnings });
   });
 
   admin.post('/programs', upload, async (req, res) => {
@@ -508,7 +533,8 @@ function createApp({ db, mailer, config }) {
     const { days } = await parseUpload(req);
     const filename = String(req.query.filename || '').slice(0, 200);
     const id = workouts.saveProgram(db, { name, filename, days }, now().toISOString());
-    res.status(201).json({ id, days: days.length });
+    const saved = db.prepare('SELECT COUNT(*) AS n FROM program_days WHERE program_id = ?').get(id).n;
+    res.status(201).json({ id, days: saved });
   });
 
   admin.get('/programs', (_req, res) => {
@@ -754,7 +780,12 @@ function createApp({ db, mailer, config }) {
   });
   app.get('/', page('index.html', ANYONE));
   app.get('/admin', page('admin.html', STAFF));
-  app.use(express.static(path.join(__dirname, '..', 'public'), { index: false }));
+  // "no-cache" = browsers may keep a copy but must check for a newer one each time,
+  // so the kiosk iPad picks up new versions right after a deploy.
+  app.use(express.static(path.join(__dirname, '..', 'public'), {
+    index: false,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+  }));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {

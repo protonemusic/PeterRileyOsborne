@@ -41,7 +41,11 @@ async function setup() {
   }
   await call('POST', '/api/login', { email: 'admin@test.org', password: 'admin-pass' });
   const sport = (await call('POST', '/api/admin/sports', { name: 'Football' })).body;
-  const student = async (first) => (await call('POST', '/api/signup', { firstName: first, lastName: 'Test', sportId: sport.id })).body.student;
+  // Signing up also signs the student in (on the current test day).
+  const student = async (first) => {
+    const body = (await call('POST', '/api/signup', { firstName: first, lastName: 'Test', sportId: sport.id })).body;
+    return { ...body.student, signup: body };
+  };
   const day = (iso) => { clock.now = new Date(`${iso}T18:00:00Z`); };
   const signIn = async (s) => {
     let r = await call('POST', '/api/signin', { studentId: s.id });
@@ -114,45 +118,55 @@ test('no program uploaded: sign-in works without a workout', async () => {
   } finally { await t.close(); }
 });
 
-test('preview and upload a program', async () => {
+test('preview and upload a program (with testing days added)', async () => {
   const t = await setup();
   try {
     const preview = await t.call('POST', '/api/admin/programs/preview', null, { raw: PDF, type: 'application/octet-stream' });
-    assert.equal(preview.body.days.length, 40);
-    assert.equal(preview.body.days[0].label, 'Week 1 · Monday: Weights');
+    const labels = preview.body.days.map((d) => d.label);
+    assert.equal(labels.length, 42);
+    assert.equal(labels[0], 'Orientation & Strength Testing');
+    assert.equal(labels[1], 'Week 1 · Monday: Weights');
+    assert.equal(labels[40], 'Week 8 · Friday: Weights');
+    assert.equal(labels[41], 'Final Strength Testing');
+    assert.deepEqual(preview.body.days[0].items.map((i) => i.name), ['Orientation completed', 'Bench Press', 'Squat', 'Deadlift']);
+    assert.deepEqual(preview.body.days[41].items.map((i) => i.name), ['Bench Press', 'Squat', 'Deadlift']);
     assert.equal((await t.call('GET', '/api/admin/programs')).body.programs.length, 0, 'preview saves nothing');
     assert.equal((await t.uploadPdf('')).status, 400, 'name required');
     const r = await t.uploadPdf();
     assert.equal(r.status, 201);
+    assert.equal(r.body.days, 42);
     const list = (await t.call('GET', '/api/admin/programs')).body.programs;
-    assert.deepEqual(list.map((p) => [p.name, p.totalDays, p.active]), [['Football 8-Week', 40, true]]);
+    assert.deepEqual(list.map((p) => [p.name, p.totalDays, p.active]), [['Football 8-Week', 42, true]]);
   } finally { await t.close(); }
 });
 
-test('each sign-in gives the next workout, once per day, with a QR link', async () => {
+test('signing up gives Day 1 (testing); each later sign-in gives the next workout, once per day', async () => {
   const t = await setup();
   try {
     await t.uploadPdf();
     const s = await t.student('Ava');
-    let r = await t.signIn(s);
-    assert.equal(r.workout.status, 'assigned');
-    assert.equal(r.workout.dayNumber, 1);
-    assert.equal(r.workout.totalDays, 40);
-    assert.equal(r.workout.label, 'Week 1 · Monday: Weights');
-    assert.match(r.dashboardUrl, /^https:\/\/wr\.example\.org\/w\/[A-Za-z0-9_-]{24}$/);
-    assert.match(r.qrSvg, /^<svg/);
+    const up = s.signup;
+    assert.equal(up.signedIn, true);
+    assert.equal(up.workout.status, 'assigned');
+    assert.equal(up.workout.dayNumber, 1);
+    assert.equal(up.workout.totalDays, 42);
+    assert.equal(up.workout.label, 'Orientation & Strength Testing');
+    assert.match(up.dashboardUrl, /^https:\/\/wr\.example\.org\/w\/[A-Za-z0-9_-]{24}$/);
+    assert.match(up.qrSvg, /^<svg/);
 
-    r = await t.signIn(s); // same day again
+    const r = await t.signIn(s); // same day again
     assert.equal(r.alreadySignedIn, true);
     assert.equal(r.workout.dayNumber, 1);
 
     t.day('2026-11-17');
-    assert.equal((await t.signIn(s)).workout.dayNumber, 2);
+    const r2 = await t.signIn(s);
+    assert.equal(r2.workout.dayNumber, 2);
+    assert.equal(r2.workout.label, 'Week 1 · Monday: Weights');
     t.day('2026-11-19'); // skipped a day the room was closed: no penalty
     const r3 = await t.signIn(s);
     assert.equal(r3.workout.dayNumber, 3);
-    assert.equal(r3.workout.label, 'Week 1 · Wednesday: Weights');
-    assert.equal(r3.dashboardUrl, r.dashboardUrl, 'same link every time');
+    assert.equal(r3.workout.label, 'Week 1 · Tuesday: Run (Speed + Power)');
+    assert.equal(r3.dashboardUrl, up.dashboardUrl, 'same link every time');
   } finally { await t.close(); }
 });
 
@@ -184,7 +198,7 @@ test('missing more than 5 weight room days starts over at Day 1', async () => {
   } finally { await t.close(); }
 });
 
-test('after the last day the program is complete', async () => {
+test('after the final testing day the program is complete', async () => {
   const t = await setup();
   try {
     workouts.saveProgram(t.db, {
@@ -193,10 +207,12 @@ test('after the last day the program is complete', async () => {
         { dayNumber: 2, week: 1, weekday: 'Tuesday', title: 'Run', kind: 'run', items: [{ name: 'Sprints', plan: '4 x 20 yd' }] },
       ],
     }, new Date().toISOString());
-    const s = await t.student('Ava');
-    t.day('2026-11-16'); await t.signIn(s);
-    t.day('2026-11-17'); assert.equal((await t.signIn(s)).workout.dayNumber, 2);
-    t.day('2026-11-18');
+    t.day('2026-11-16');
+    const s = await t.student('Ava'); // Day 1: testing
+    const labels = [];
+    for (const d of ['2026-11-17', '2026-11-18', '2026-11-19']) { t.day(d); labels.push((await t.signIn(s)).workout.label); }
+    assert.deepEqual(labels, ['Week 1 · Monday: Lift', 'Week 1 · Tuesday: Run', 'Final Strength Testing']);
+    t.day('2026-11-20');
     const r = await t.signIn(s);
     assert.equal(r.workout.status, 'complete');
     assert.ok(r.qrSvg, 'still gets a link to their history');
@@ -220,27 +236,54 @@ test('a new program starts everyone at Day 1', async () => {
   } finally { await t.close(); }
 });
 
-test('student dashboard: view, log weights and reps, see last time', async () => {
+test('student dashboard: testing day, warm-up/cool-down, log weights and reps, see last time', async () => {
   const t = await setup();
   try {
     await t.uploadPdf();
-    const s = await t.student('Ava');
     t.day('2026-11-16');
-    const first = await t.signIn(s);
-    const token = first.dashboardUrl.split('/w/')[1];
+    const s = await t.student('Ava');
+    const token = s.signup.dashboardUrl.split('/w/')[1];
 
     // No login needed on the phone; a bad token is a 404.
     assert.equal((await t.phone('GET', '/api/w/not-a-real-token-123456')).status, 404);
     let dash = (await t.phone('GET', `/api/w/${token}`)).body;
     assert.deepEqual(dash.student, { firstName: 'Ava', lastName: 'Test', sportName: 'Football' });
     assert.equal(dash.workouts.length, 1);
-    const w1 = dash.workouts[0];
 
-    let detail = (await t.phone('GET', `/api/w/${token}/workouts/${w1.id}`)).body.workout;
+    // Day 1: orientation check + 3 test lifts, with the lifting warm-up and stretch.
+    const testId = dash.workouts[0].id;
+    let detail = (await t.phone('GET', `/api/w/${token}/workouts/${testId}`)).body.workout;
+    assert.equal(detail.kind, 'test');
+    assert.equal(detail.oneRepMaxFactor, 1.18);
+    assert.equal(detail.warmup.name, 'Warm-up');
+    assert.equal(detail.warmup.steps.length, 10);
+    assert.equal(detail.warmup.steps[0], 'Easy Jog');
+    assert.equal(detail.warmup.steps[9], 'Body Weight Squats');
+    assert.equal(detail.cooldown.name, 'Cool-down');
+    assert.equal(detail.cooldown.steps.length, 7);
+    assert.equal(detail.cooldown.steps[6], "Child's Pose");
+    assert.deepEqual(detail.items.map((i) => i.name), ['Orientation completed', 'Bench Press', 'Squat', 'Deadlift']);
+    const testResults = {
+      warmup: true, cooldown: true,
+      items: [{ done: true }, { sets: [{ weight: '135', reps: '6' }] }, { sets: [{ weight: '185', reps: '6' }] }, { sets: [{ weight: '225', reps: '6' }] }],
+    };
+    await t.phone('PUT', `/api/w/${token}/workouts/${testId}`, { results: testResults, completed: true });
+    detail = (await t.phone('GET', `/api/w/${token}/workouts/${testId}`)).body.workout;
+    assert.equal(detail.results.warmup, true);
+    assert.equal(detail.results.cooldown, true);
+    assert.deepEqual(detail.results.items[0], { done: true });
+    assert.deepEqual(detail.results.items[1], { sets: [{ weight: '135', reps: '6' }] });
+
+    // Day 2: Week 1 Monday weights.
+    t.day('2026-11-17');
+    await t.signIn(s);
+    dash = (await t.phone('GET', `/api/w/${token}`)).body;
+    const w1 = dash.workouts[0];
+    assert.equal(w1.dayNumber, 2);
+    detail = (await t.phone('GET', `/api/w/${token}/workouts/${w1.id}`)).body.workout;
     assert.equal(detail.kind, 'weights');
     assert.equal(detail.items[0].name, 'High pull');
     assert.equal(detail.results.items[0].sets.length, 5);
-
     const results = { items: detail.items.map((it) => ({ sets: Array.from({ length: it.sets }, () => ({ weight: '95', reps: '3' })) })), notes: 'felt good' };
     assert.equal((await t.phone('PUT', `/api/w/${token}/workouts/${w1.id}`, { results, completed: true })).status, 200);
     detail = (await t.phone('GET', `/api/w/${token}/workouts/${w1.id}`)).body.workout;
@@ -249,27 +292,55 @@ test('student dashboard: view, log weights and reps, see last time', async () =>
     assert.deepEqual(detail.results.items[0].sets[0], { weight: '95', reps: '3' });
 
     // Week 2 Monday repeats High pull: shows what they did last time.
-    for (const d of ['2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-23']) { t.day(d); await t.signIn(s); }
+    for (const d of ['2026-11-18', '2026-11-19', '2026-11-20', '2026-11-23', '2026-11-24']) { t.day(d); await t.signIn(s); }
     dash = (await t.phone('GET', `/api/w/${token}`)).body;
-    assert.equal(dash.workouts[0].dayNumber, 6);
+    assert.equal(dash.workouts[0].dayNumber, 7);
     detail = (await t.phone('GET', `/api/w/${token}/workouts/${dash.workouts[0].id}`)).body.workout;
     assert.equal(detail.items[0].name, 'High pull');
     assert.equal(detail.items[0].lastTime, '95 × 3, 95 × 3, 95 × 3, 95 × 3, 95 × 3');
 
-    // Running day: done / result / notes.
-    const run = dash.workouts.find((w) => w.dayNumber === 2);
-    const runResults = { items: [{ done: true, result: '', notes: '' }, { done: true, result: '5.2s' }] };
+    // Running day: done / result, with the same warm-up and cool-down.
+    const run = dash.workouts.find((w) => w.dayNumber === 3);
+    const runResults = { cooldown: true, warmup: true, items: [{ done: true, result: '', notes: '' }, { done: true, result: '5.2s' }] };
     await t.phone('PUT', `/api/w/${token}/workouts/${run.id}`, { results: runResults });
     detail = (await t.phone('GET', `/api/w/${token}/workouts/${run.id}`)).body.workout;
     assert.equal(detail.kind, 'run');
+    assert.equal(detail.warmup.steps[0], 'Easy Jog');
+    assert.equal(detail.cooldown.name, 'Cool-down');
+    assert.equal(detail.cooldown.steps[0], 'Hamstring Stretch');
+    assert.equal(detail.results.warmup, true);
+    assert.equal(detail.results.cooldown, true);
     assert.deepEqual(detail.results.items[1], { done: true, result: '5.2s', notes: '' });
     assert.equal(detail.completed, false);
 
     // Another student's token can't open this workout.
     const ben = await t.student('Ben');
-    const benToken = (await t.signIn(ben)).dashboardUrl.split('/w/')[1];
+    const benToken = ben.signup.dashboardUrl.split('/w/')[1];
     assert.equal((await t.phone('GET', `/api/w/${benToken}/workouts/${w1.id}`)).status, 404);
     assert.equal((await t.phone('PUT', `/api/w/${benToken}/workouts/${w1.id}`, { results: {} })).status, 404);
+  } finally { await t.close(); }
+});
+
+test('final testing day shows the first test as last time', async () => {
+  const t = await setup();
+  try {
+    workouts.saveProgram(t.db, {
+      name: 'Short', days: [{ dayNumber: 1, week: 1, weekday: 'Monday', title: 'Lift', kind: 'weights', items: [{ name: 'Squat', sets: 1, reps: '5', prescription: '1 x 5' }] }],
+    }, new Date().toISOString());
+    t.day('2026-11-16');
+    const s = await t.student('Ava');
+    const token = s.signup.dashboardUrl.split('/w/')[1];
+    let dash = (await t.phone('GET', `/api/w/${token}`)).body;
+    await t.phone('PUT', `/api/w/${token}/workouts/${dash.workouts[0].id}`, {
+      results: { items: [{ done: true }, { sets: [{ weight: '135', reps: '6' }] }, { sets: [] }, { sets: [] }] },
+    });
+    t.day('2026-11-17'); await t.signIn(s);
+    t.day('2026-11-18'); await t.signIn(s);
+    dash = (await t.phone('GET', `/api/w/${token}`)).body;
+    const detail = (await t.phone('GET', `/api/w/${token}/workouts/${dash.workouts[0].id}`)).body.workout;
+    assert.equal(detail.label, 'Final Strength Testing');
+    assert.equal(detail.items[0].name, 'Bench Press');
+    assert.equal(detail.items[0].lastTime, '135 × 6');
   } finally { await t.close(); }
 });
 
@@ -278,9 +349,9 @@ test('admin sees progress, can reset a link; removing a sign-in removes its work
   try {
     await t.uploadPdf();
     const s = await t.student('Ava');
-    const r = await t.signIn(s);
+    const r = s.signup;
     let list = (await t.call('GET', '/api/admin/students')).body.students;
-    assert.equal(list[0].workout, 'Day 1 of 40');
+    assert.equal(list[0].workout, 'Day 1 of 42');
 
     const reset = (await t.call('POST', `/api/admin/students/${s.id}/workout-link`, { reset: true })).body;
     assert.notEqual(reset.url, r.dashboardUrl);
@@ -306,4 +377,51 @@ test('existing databases get the new student column', () => {
   assert.equal(db.prepare('SELECT workout_token FROM students').get().workout_token, null);
   assert.ok(workouts.ensureToken(db, 1));
   db.close();
+});
+
+test('a student who signed in before the program was made active gets a workout on their next sign-in that day', async () => {
+  const t = await setup();
+  try {
+    const s = await t.student('Ava');
+    assert.deepEqual(s.signup.workout, { status: 'none' });
+    assert.equal(s.signup.qrSvg, undefined);
+    await t.uploadPdf();
+    const r = await t.signIn(s);
+    assert.equal(r.alreadySignedIn, true);
+    assert.equal(r.workout.dayNumber, 1);
+    assert.ok(r.qrSvg);
+    t.day('2026-11-17');
+    assert.equal((await t.signIn(s)).workout.dayNumber, 2);
+  } finally { await t.close(); }
+});
+
+test('programs saved before testing days existed get them, keeping everyone in place', async () => {
+  const t = await setup();
+  try {
+    // An old-style program: two days, no testing days, a student on Day 1.
+    const pid = Number(t.db.prepare("INSERT INTO programs (name, created_at, active) VALUES ('Old', '2026-11-01', 1)").run().lastInsertRowid);
+    const ins = t.db.prepare("INSERT INTO program_days (program_id, day_number, weekday, title, kind, items) VALUES (?, ?, ?, ?, ?, ?)");
+    ins.run(pid, 1, 'Monday', 'Lift', 'weights', JSON.stringify([{ name: 'Squat', sets: 1, reps: '5', prescription: '1 x 5' }]));
+    ins.run(pid, 2, 'Tuesday', 'Run', 'run', JSON.stringify([{ name: 'Sprints', plan: '4 x 20 yd' }]));
+    const sid = Number(t.db.prepare("INSERT INTO students (first_name, last_name, created_at) VALUES ('Old', 'Timer', '2026-11-01')").run().lastInsertRowid);
+    t.db.prepare("INSERT INTO student_workouts (student_id, program_id, day_number, assigned_date) VALUES (?, ?, 1, '2026-11-13')").run(sid, pid);
+
+    assert.equal(workouts.addMissingTestDays(t.db), 1);
+    assert.equal(workouts.addMissingTestDays(t.db), 0, 'only once');
+    const days = t.db.prepare('SELECT day_number, title, kind FROM program_days WHERE program_id = ? ORDER BY day_number').all(pid);
+    assert.deepEqual(days.map((d) => [d.day_number, d.title]), [
+      [1, 'Orientation & Strength Testing'], [2, 'Lift'], [3, 'Run'], [4, 'Final Strength Testing']]);
+    // The student who had done "Lift" is still on "Lift", so their next workout is "Run".
+    assert.equal(t.db.prepare('SELECT day_number FROM student_workouts WHERE student_id = ?').get(sid).day_number, 2);
+    const next = workouts.assignWorkout(t.db, { studentId: sid, signInId: null, today: '2026-11-16', tz: 'America/Los_Angeles' });
+    assert.equal(next.workout.label, 'Tuesday: Run');
+  } finally { await t.close(); }
+});
+
+test('static files tell browsers to check for new versions', async () => {
+  const t = await setup();
+  try {
+    const res = await fetch(`${t.base}/kiosk.js`);
+    assert.equal(res.headers.get('cache-control'), 'no-cache');
+  } finally { await t.close(); }
 });

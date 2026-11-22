@@ -8,15 +8,24 @@ const { label } = require('./programParser');
 /** Missing more than this many weight room days in a row starts a student over at Day 1. */
 const MAX_MISSED_DAYS = 5;
 
-/**
- * Warm-up and cool-down, the same every day (from the program's "Session clock":
- * lifting 5 min warm-up + 3 min stretch; running 8 min warm-up and form work + 4 min cool-down).
- * Running days already start with the 8-minute "Form work" drill, so they only add the cool-down.
- */
+/** Warm-up: lifting days only (including the strength-testing days). */
+const WARMUP = {
+  name: 'Warm-up',
+  plan: '5 min',
+  steps: [
+    'Easy Jog', 'High Knees', 'Butt Kicks', 'Walking Knee Hugs', 'Walking Lunge with Twist',
+    "Frankenstein's", 'Lateral Shuffle', 'Inchworm to Spiderman', 'Arm Circles', 'Body Weight Squats',
+  ],
+};
+/** Cool-down: every day. */
+const COOLDOWN_STEPS = [
+  'Hamstring Stretch', 'Half-kneeling hip flexor stretch', 'Figure-4 Glute Stretch', 'Butterflies',
+  'Calf/Achilles Stretch', 'Cross-body shoulder stretch', "Child's Pose",
+];
 const ROUTINES = {
-  weights: { warmup: { name: 'Warm-up', plan: '5 min' }, cooldown: { name: 'Stretch', plan: '3 min' } },
-  test: { warmup: { name: 'Warm-up', plan: '5 min' }, cooldown: { name: 'Stretch', plan: '3 min' } },
-  run: { warmup: null, cooldown: { name: 'Cool-down', plan: '4 min' } },
+  weights: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '3 min', steps: COOLDOWN_STEPS } },
+  test: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '3 min', steps: COOLDOWN_STEPS } },
+  run: { warmup: null, cooldown: { name: 'Cool-down', plan: '4 min', steps: COOLDOWN_STEPS } },
 };
 const routineFor = (kind) => ROUTINES[kind] || { warmup: null, cooldown: null };
 

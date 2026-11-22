@@ -288,3 +288,6 @@ dialog.prompt {
 }
 dialog.prompt::backdrop { background: rgb(0 0 0 / 45%); }
 dialog.prompt .row { flex-wrap: nowrap; }
+
+.routine-steps { margin: 6px 0 10px; padding-left: 1.6em; display: grid; gap: 4px; }
+.routine-steps li { padding-left: 2px; }

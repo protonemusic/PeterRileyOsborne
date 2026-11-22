@@ -42,9 +42,12 @@ button emails each sport's coaches a list of their athletes who signed in.
      (weight × 1.18, since 6 reps is about 85% of a 1 rep max).
    - The **last day** is the same strength test, showing each student's Day 1 numbers as "last time".
    - These two days are added to every program automatically, so the 40-day football program is 42 days.
-   - Every workout has the warm-up and cool-down from the program's session clock: lifting and
-     testing days start with a 5 min warm-up and end with a 3 min stretch; running days (which
-     already start with 8 min of form work) end with a 4 min cool-down. Students check them off.
+   - **Warm-up** (lifting and testing days): Easy Jog, High Knees, Butt Kicks, Walking Knee Hugs,
+     Walking Lunge with Twist, Frankenstein's, Lateral Shuffle, Inchworm to Spiderman, Arm Circles,
+     Body Weight Squats. **Cool-down** (every day): Hamstring Stretch, Half-kneeling hip flexor
+     stretch, Figure-4 Glute Stretch, Butterflies, Calf/Achilles Stretch, Cross-body shoulder
+     stretch, Child's Pose. Each shows as a numbered list with one checkbox to mark it done.
+     (They are set in `src/workouts.js`.)
 4. Missing **more than 5 days the weight room was open** (days anyone signed in) starts them over at
    Day 1. Weekends, holidays and breaks don't count.
 5. After the last day they see **Program complete** until a new program is made active. Making a new

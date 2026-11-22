@@ -299,16 +299,16 @@ test('student dashboard: testing day, warm-up/cool-down, log weights and reps, s
     assert.equal(detail.items[0].name, 'High pull');
     assert.equal(detail.items[0].lastTime, '95 × 3, 95 × 3, 95 × 3, 95 × 3, 95 × 3');
 
-    // Running day: done / result; no warm-up (lifting days only), but the cool-down.
+    // Running day: done / result, with the same warm-up and cool-down.
     const run = dash.workouts.find((w) => w.dayNumber === 3);
     const runResults = { cooldown: true, warmup: true, items: [{ done: true, result: '', notes: '' }, { done: true, result: '5.2s' }] };
     await t.phone('PUT', `/api/w/${token}/workouts/${run.id}`, { results: runResults });
     detail = (await t.phone('GET', `/api/w/${token}/workouts/${run.id}`)).body.workout;
     assert.equal(detail.kind, 'run');
-    assert.equal(detail.warmup, null);
+    assert.equal(detail.warmup.steps[0], 'Easy Jog');
     assert.equal(detail.cooldown.name, 'Cool-down');
     assert.equal(detail.cooldown.steps[0], 'Hamstring Stretch');
-    assert.equal(detail.results.warmup, false, 'no warm-up to check on running days');
+    assert.equal(detail.results.warmup, true);
     assert.equal(detail.results.cooldown, true);
     assert.deepEqual(detail.results.items[1], { done: true, result: '5.2s', notes: '' });
     assert.equal(detail.completed, false);

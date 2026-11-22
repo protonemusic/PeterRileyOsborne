@@ -8,7 +8,7 @@ const { label } = require('./programParser');
 /** Missing more than this many weight room days in a row starts a student over at Day 1. */
 const MAX_MISSED_DAYS = 5;
 
-/** Warm-up: lifting days only (including the strength-testing days). */
+/** Warm-up: every day. */
 const WARMUP = {
   name: 'Warm-up',
   plan: '5 min',
@@ -25,7 +25,7 @@ const COOLDOWN_STEPS = [
 const ROUTINES = {
   weights: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '3 min', steps: COOLDOWN_STEPS } },
   test: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '3 min', steps: COOLDOWN_STEPS } },
-  run: { warmup: null, cooldown: { name: 'Cool-down', plan: '4 min', steps: COOLDOWN_STEPS } },
+  run: { warmup: WARMUP, cooldown: { name: 'Cool-down', plan: '4 min', steps: COOLDOWN_STEPS } },
 };
 const routineFor = (kind) => ROUTINES[kind] || { warmup: null, cooldown: null };
 

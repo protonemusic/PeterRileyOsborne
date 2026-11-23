@@ -48,7 +48,14 @@
     // Another tab changed it.
     window.addEventListener('storage', (e) => { if (e.key === KEY) { apply(e.newValue); sync(); } });
     sync();
-    bar.append(btn);
+    // School logo on the left, theme switch on the right.
+    const logo = document.createElement('img');
+    logo.src = '/logo.png';
+    logo.alt = 'Creswell High School Bulldogs';
+    logo.className = 'site-logo';
+    logo.width = 451;
+    logo.height = 109;
+    bar.append(logo, btn);
     document.body.prepend(bar);
   }
 

@@ -315,7 +315,7 @@ dialog.prompt .row { flex-wrap: nowrap; }
 
 /* ---------- Site bar with the light/dark toggle (every page) ---------- */
 .site-bar {
-  display: flex; justify-content: flex-end; align-items: center;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
   padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top));
 }
 .theme-toggle {
@@ -409,3 +409,17 @@ dialog.prompt .row { flex-wrap: nowrap; }
 .picker-option { display: flex; align-items: center; gap: 10px; font-weight: 400; padding: 8px; margin: 0; cursor: pointer; border-radius: 6px; }
 .picker-option:hover { background: var(--stripe); }
 .picker-option input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }
+
+/* School logo in the site bar (every page). Its lettering is black on transparent,
+   so in dark mode it sits on a white plate to stay readable. */
+.site-logo { display: block; height: 48px; width: auto; max-width: 55vw; object-fit: contain; object-position: left center; }
+:root[data-theme="dark"] .site-logo { background: #fff; border-radius: 10px; padding: 4px 8px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .site-logo { background: #fff; border-radius: 10px; padding: 4px 8px; }
+}
+.theme-toggle { white-space: nowrap; flex: 0 0 auto; }
+@media (max-width: 380px) {
+  .site-bar { gap: 8px; }
+  .site-logo { height: 32px; }
+  .theme-toggle { gap: 6px; padding: 4px 8px; font-size: 14px; }
+}

@@ -36,7 +36,17 @@
     track.className = 'track';
     track.setAttribute('aria-hidden', 'true');
     btn.append(label, track);
-    const sync = () => btn.setAttribute('aria-checked', String(isDark()));
+    // School logo: the white-lettered version on dark backgrounds.
+    const logo = document.createElement('img');
+    logo.alt = 'Creswell High School Bulldogs';
+    logo.className = 'site-logo';
+    logo.width = 451;
+    logo.height = 109;
+    const sync = () => {
+      btn.setAttribute('aria-checked', String(isDark()));
+      const src = isDark() ? '/logo-dark.png' : '/logo.png';
+      if (logo.getAttribute('src') !== src) logo.src = src;
+    };
     btn.addEventListener('click', () => {
       const next = isDark() ? 'light' : 'dark';
       apply(next);
@@ -49,12 +59,6 @@
     window.addEventListener('storage', (e) => { if (e.key === KEY) { apply(e.newValue); sync(); } });
     sync();
     // School logo on the left, theme switch on the right.
-    const logo = document.createElement('img');
-    logo.src = '/logo.png';
-    logo.alt = 'Creswell High School Bulldogs';
-    logo.className = 'site-logo';
-    logo.width = 451;
-    logo.height = 109;
     bar.append(logo, btn);
     document.body.prepend(bar);
   }

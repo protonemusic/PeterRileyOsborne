@@ -243,13 +243,15 @@ test('multi-sport students: listed under each sport; boys/girls only when their 
   assert.equal(hof.notSet, 1);
 });
 
-test('the school logo is served without a login (it appears on the login page too)', async () => {
+test('the school logos (light and dark) are served without a login (it appears on the login page too)', async () => {
   const db = openDb(':memory:');
   const app = createApp({ db, mailer: { configured: false }, config: { timeZone: 'America/Los_Angeles', appName: 'WR' } });
   const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
   try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/logo.png`);
-    assert.equal(res.status, 200);
-    assert.equal(res.headers.get('content-type'), 'image/png');
+    for (const file of ['logo.png', 'logo-dark.png']) {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/${file}`);
+      assert.equal(res.status, 200, file);
+      assert.equal(res.headers.get('content-type'), 'image/png');
+    }
   } finally { await new Promise((r) => server.close(r)); }
 });

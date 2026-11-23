@@ -410,13 +410,9 @@ dialog.prompt .row { flex-wrap: nowrap; }
 .picker-option:hover { background: var(--stripe); }
 .picker-option input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }
 
-/* School logo in the site bar (every page). Its lettering is black on transparent,
-   so in dark mode it sits on a white plate to stay readable. */
+/* School logo in the site bar (every page). theme.js swaps in the white-lettered
+   version (logo-dark.png) when the page is dark. */
 .site-logo { display: block; height: 48px; width: auto; max-width: 55vw; object-fit: contain; object-position: left center; }
-:root[data-theme="dark"] .site-logo { background: #fff; border-radius: 10px; padding: 4px 8px; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .site-logo { background: #fff; border-radius: 10px; padding: 4px 8px; }
-}
 .theme-toggle { white-space: nowrap; flex: 0 0 auto; }
 @media (max-width: 380px) {
   .site-bar { gap: 8px; }

@@ -172,3 +172,55 @@ test('existing sports get boys/girls guessed when the column is added', () => {
     [['Girls Basketball', 'girls'], ['Boys Soccer', 'boys'], ['Wrestling', '']]);
   db.close();
 });
+
+test('CSV export: escaped fields, totals row, both Hall of Fame groups; staff-only', async () => {
+  assert.equal(stats.csvField('Smith, Jr.', { text: true }), '"Smith, Jr."');
+  assert.equal(stats.csvField('Say "hi"', { text: true }), '"Say ""hi"""');
+  assert.equal(stats.csvField('=HYPERLINK("x")', { text: true }), `"'=HYPERLINK(""x"")"`);
+  assert.equal(stats.csvField(-24), '-24', 'negative numbers stay numbers');
+  assert.equal(stats.csvField(null), '');
+
+  const { db, ids, student, logTest } = setupDb();
+  const ben = student('Ben', ids.football);
+  logTest(ben, '2026-09-01', [200, 250, 300]);
+  logTest(ben, '2026-10-30', [220, 260, 290], 2);
+  const g = student('Gina', ids.soccer);
+  logTest(g, '2026-09-01', [100, 100, 100]);
+
+  const pb = stats.personalBestsCsv(stats.personalBests(db));
+  const lines = pb.replace(/^﻿/, '').trim().split('\r\n');
+  assert.equal(lines[0], 'Student Name,Sport,Program Start Date,Most Recent Test Date,Starting Bench,Current Bench,Starting Squat,Current Squat,Starting Deadlift,Current Deadlift,Starting Combined Weight,Current Combined Weight,Weight Increase,Percent Increase (%)');
+  assert.equal(lines[1], 'Ben Last1,Football,2026-09-01,2026-10-30,236,260,295,307,354,342,885,909,24,2.7');
+  assert.equal(lines[2], 'Gina Last2,Girls Soccer,2026-09-01,2026-09-01,,118,,118,,118,,354,,');
+  assert.match(lines[3], /^Totals \(2 students\),,,,236,378,/);
+
+  const hof = stats.hallOfFameCsv(stats.hallOfFame(db));
+  const hl = hof.replace(/^﻿/, '').trim().split('\r\n');
+  assert.equal(hl[0], 'Group,Rank,Student Name,Sport,Bench Max,Squat Max,Deadlift Max,% Bench Increase,% Squat Increase,% Deadlift Increase');
+  assert.match(hl[1], /^Boys,1,Ben Last1,Football,260,307,354,/);
+  assert.match(hl[2], /^Girls,1,Gina Last2,Girls Soccer,118,118,118,,,$/);
+
+  // Over HTTP: download headers, and kiosk accounts can't export.
+  await createUser(db, { email: 'admin@test.org', role: 'admin', password: 'admin-pass' });
+  await createUser(db, { email: 'kiosk@test.org', role: 'kiosk', password: 'kiosk-pass' });
+  const app = createApp({ db, mailer: { configured: false }, config: { timeZone: 'America/Los_Angeles', appName: 'WR' } });
+  const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const login = async (email, password) => (await fetch(`${base}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
+  })).headers.get('set-cookie').split(';')[0];
+  try {
+    let cookie = await login('admin@test.org', 'admin-pass');
+    let res = await fetch(`${base}/api/admin/personal-bests.csv?sportId=${ids.soccer}`, { headers: { Cookie: cookie } });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /^text\/csv/);
+    assert.match(res.headers.get('content-disposition'), /attachment; filename="personal-bests-girls-soccer-\d{4}-\d{2}-\d{2}\.csv"/);
+    const body = await res.text();
+    assert.ok(body.includes('Gina Last2') && !body.includes('Ben Last1'), 'export follows the sport filter');
+    res = await fetch(`${base}/api/admin/hall-of-fame.csv`, { headers: { Cookie: cookie } });
+    assert.match(res.headers.get('content-disposition'), /filename="hall-of-fame-/);
+    cookie = await login('kiosk@test.org', 'kiosk-pass');
+    assert.equal((await fetch(`${base}/api/admin/personal-bests.csv`, { headers: { Cookie: cookie } })).status, 403);
+    assert.equal((await fetch(`${base}/api/admin/hall-of-fame.csv`, { headers: { Cookie: cookie } })).status, 403);
+  } finally { await new Promise((r) => server.close(r)); }
+});

@@ -140,4 +140,42 @@ function guessGender(name) {
   return '';
 }
 
-module.exports = { personalBests, hallOfFame, guessGender, FACTOR };
+// ---------- CSV export ----------
+/** One CSV field. Text that a spreadsheet would run as a formula (=, +, -, @) gets a leading '. */
+function csvField(value, { text = false } = {}) {
+  if (value == null) return '';
+  let s = String(value);
+  if (text && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+const csvLine = (cells) => cells.map(([v, opts]) => csvField(v, opts)).join(',');
+// Byte order mark so Excel reads names with accents correctly.
+const csvDocument = (lines) => `﻿${lines.join('\r\n')}\r\n`;
+const T = (v) => [v, { text: true }];
+const N = (v) => [v];
+
+function personalBestsCsv({ rows, totals }) {
+  const header = ['Student Name', 'Sport', 'Program Start Date', 'Most Recent Test Date', 'Starting Bench', 'Current Bench',
+    'Starting Squat', 'Current Squat', 'Starting Deadlift', 'Current Deadlift', 'Starting Combined Weight',
+    'Current Combined Weight', 'Weight Increase', 'Percent Increase (%)'];
+  const nums = (r) => ['starting_bench', 'current_bench', 'starting_squat', 'current_squat', 'starting_deadlift',
+    'current_deadlift', 'startingCombined', 'currentCombined', 'increase', 'percent'].map((k) => N(r[k]));
+  return csvDocument([
+    csvLine(header.map(T)),
+    ...rows.map((r) => csvLine([T(r.name), T(r.sportName), N(r.startDate), N(r.recentDate), ...nums(r)])),
+    csvLine([T(`Totals (${totals.students} students)`), T(''), N(''), N(''), ...nums(totals)]),
+  ]);
+}
+
+function hallOfFameCsv({ boys, girls }) {
+  const header = ['Group', 'Rank', 'Student Name', 'Sport', 'Bench Max', 'Squat Max', 'Deadlift Max',
+    '% Bench Increase', '% Squat Increase', '% Deadlift Increase'];
+  const lines = [csvLine(header.map(T))];
+  for (const [group, list] of [['Boys', boys], ['Girls', girls]]) {
+    list.forEach((r, i) => lines.push(csvLine([T(group), N(i + 1), T(r.name), T(r.sportName), N(r.benchMax), N(r.squatMax),
+      N(r.deadliftMax), N(r.benchPercent), N(r.squatPercent), N(r.deadliftPercent)])));
+  }
+  return csvDocument(lines);
+}
+
+module.exports = { personalBests, hallOfFame, guessGender, FACTOR, personalBestsCsv, hallOfFameCsv, csvField };

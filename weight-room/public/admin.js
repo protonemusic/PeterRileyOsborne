@@ -585,7 +585,9 @@ async function loadBests() {
   const sel = $('pb-sport');
   const chosen = sel.value;
   sel.replaceChildren(new Option('All', ''), ...state.sports.map((s) => new Option(s.name, s.id, false, String(s.id) === chosen)));
-  const { rows, totals } = await api(`/api/admin/personal-bests${sel.value ? `?sportId=${sel.value}` : ''}`);
+  const query = sel.value ? `?sportId=${sel.value}` : '';
+  $('pb-export').href = `/api/admin/personal-bests.csv${query}`; // exports what's shown
+  const { rows, totals } = await api(`/api/admin/personal-bests${query}`);
   const body = $('pb-rows');
   body.replaceChildren();
   if (!rows.length) {

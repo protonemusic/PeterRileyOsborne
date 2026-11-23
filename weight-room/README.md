@@ -27,9 +27,11 @@ button emails each sport's coaches a list of their athletes who signed in.
     squat and deadlift, combined weight, weight increase and percent increase, filterable by sport,
     with a totals row. Starting = first-ever test, Current = most recent; after one test only
     Current is filled in. The totals percent is total increase ÷ total starting weight.
+    **Export CSV** downloads what's shown (the current sport filter, with the totals row).
   - **Hall of Fame** (button at the top): top 5 boys and top 5 girls by combined best lifts, with
     the % increase for each lift. Boys/girls comes from the student's sport: set it with the
     Boys/Girls toggle on each sport (sports with "Boys" or "Girls" in the name are set automatically).
+    **Export CSV** downloads both lists.
   - **Email History:** what was sent and to whom.
   - **Users** (admins only): add people and choose their role. See below.
   - **My Account:** change your password.

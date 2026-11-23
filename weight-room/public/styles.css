@@ -359,3 +359,13 @@ dialog.prompt .row { flex-wrap: nowrap; }
 /* Keep the name column visible while the wide grid scrolls sideways. */
 .data-grid tr > :first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
 .data-grid tbody tr:nth-child(even) > :first-child { background: var(--stripe); }
+
+/* A link that looks like a button (downloads) */
+.button-link {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px;
+  border: 1.5px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text);
+  font-weight: 600; text-decoration: none;
+}
+.button-link:hover { border-color: var(--accent); }
+.filter-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.filter-row .field { flex: 0 1 320px; margin-bottom: 0; }

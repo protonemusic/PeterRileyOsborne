@@ -183,9 +183,12 @@
         <div class="card">
           <h2>CHS Bulldog Personal Bests</h2>
           <p>Below is the aggregate data of the 1 REP MAX change over time for students in the Bulldog Zero Period Weight Training class.</p>
-          <div class="field" style="max-width:320px">
-            <label for="pb-sport">Sport</label>
-            <select id="pb-sport"><option value="">All</option></select>
+          <div class="filter-row">
+            <div class="field">
+              <label for="pb-sport">Sport</label>
+              <select id="pb-sport"><option value="">All</option></select>
+            </div>
+            <a class="button-link" id="pb-export" href="/api/admin/personal-bests.csv" download>Export CSV</a>
           </div>
           <div class="table-wrap">
             <table class="data-grid">

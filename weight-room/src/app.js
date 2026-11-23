@@ -714,6 +714,25 @@ function createApp({ db, mailer, config }) {
     res.json(stats.hallOfFame(db, { limit: 5 }));
   });
 
+  function sendCsv(res, name, body) {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${slug}-${today()}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(body);
+  }
+
+  admin.get('/personal-bests.csv', (req, res) => {
+    const sportId = req.query.sportId ? toId(req.query.sportId, 'sport') : null;
+    const sport = sportId ? getSport(sportId) : null;
+    if (sportId && !sport) throw notFound('Sport');
+    sendCsv(res, `personal bests ${sport ? sport.name : 'all'}`, stats.personalBestsCsv(stats.personalBests(db, { sportId })));
+  });
+
+  admin.get('/hall-of-fame.csv', (_req, res) => {
+    sendCsv(res, 'hall of fame', stats.hallOfFameCsv(stats.hallOfFame(db, { limit: 5 })));
+  });
+
   admin.get('/notifications', (_req, res) => {
     const rows = db.prepare(`SELECT id, sent_at AS sentAt, sport_name AS sportName, recipients,
       sign_in_count AS count FROM notifications ORDER BY sent_at DESC LIMIT 50`).all();

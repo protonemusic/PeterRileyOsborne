@@ -196,6 +196,12 @@ function progressFor(db, studentId) {
 }
 
 // ---------- logging results ----------
+/** 1 rep max from the weight lifted for 6 reps to failure, rounded to the pound (null if none). */
+function oneRepMaxFrom(weight) {
+  const n = parseFloat(String(weight ?? '').replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * ONE_REP_MAX_FACTOR) : null;
+}
+
 const str = (v, max) => (v == null ? '' : String(v).slice(0, max));
 
 /** Keep only the expected shape, as short strings, for the given day. */
@@ -214,12 +220,15 @@ function cleanResults(day, input) {
       out.items.push({ done: Boolean(r.done) });
     } else if (day.kind === 'weights' || day.kind === 'test') {
       const sets = Array.isArray(r.sets) ? r.sets : [];
-      out.items.push({
+      const entry = {
         sets: Array.from({ length: item.sets }, (_, s) => ({
           weight: str(sets[s]?.weight, 12).trim(),
           reps: str(sets[s]?.reps, 12).trim(),
         })),
-      });
+      };
+      // Testing days record the 1 rep max (calculated here, never taken from the browser).
+      if (item.test) entry.oneRepMax = oneRepMaxFrom(entry.sets[0]?.weight);
+      out.items.push(entry);
     } else {
       out.items.push({ done: Boolean(r.done), result: str(r.result, 40).trim(), notes: str(r.notes, 200).trim() });
     }
@@ -240,7 +249,11 @@ function lastTimeFor(db, studentId, workoutId, names) {
       if (item.type === 'check') return;
       const key = item.name.toLowerCase();
       if (!want.has(key) || want.get(key)) return;
-      const sets = (results.items?.[i]?.sets || []).filter((s) => s.weight || s.reps);
+      const r = results.items?.[i] || {};
+      // A testing day's result is its 1 rep max.
+      const max = item.test ? (r.oneRepMax ?? oneRepMaxFrom(r.sets?.[0]?.weight)) : null;
+      if (max) { want.set(key, `1 rep max: ${max} lbs`); return; }
+      const sets = (r.sets || []).filter((s) => s.weight || s.reps);
       if (sets.length) want.set(key, sets.map((s) => [s.weight, s.reps].filter(Boolean).join(' × ')).join(', '));
     });
   }
@@ -316,6 +329,6 @@ function dashboard(db, token, today) {
 }
 
 module.exports = {
-  MAX_MISSED_DAYS, ONE_REP_MAX_FACTOR, withTestDays, addMissingTestDays, saveProgram, activeProgram, getProgramDay, ensureToken, resetToken, openDaysBetween,
+  oneRepMaxFrom, MAX_MISSED_DAYS, ONE_REP_MAX_FACTOR, withTestDays, addMissingTestDays, saveProgram, activeProgram, getProgramDay, ensureToken, resetToken, openDaysBetween,
   assignWorkout, progressFor, workoutDetail, saveResults, dashboard,
 };

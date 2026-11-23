@@ -33,9 +33,12 @@ function allTests(db) {
     let any = false;
     for (const lift of LIFTS) {
       const i = items.findIndex((it) => it.type !== 'check' && it.name.toLowerCase() === lift.name);
-      const weight = i >= 0 ? num(results.items?.[i]?.sets?.[0]?.weight) : null;
-      test[lift.key] = weight ? Math.round(weight * FACTOR) : null;
-      if (weight) any = true;
+      const r = i >= 0 ? results.items?.[i] : null;
+      // The recorded 1 rep max; tests saved before it was stored are calculated the same way.
+      const weight = num(r?.sets?.[0]?.weight);
+      const max = num(r?.oneRepMax) ?? (weight ? Math.round(weight * FACTOR) : null);
+      test[lift.key] = max ? Math.round(max) : null;
+      if (max) any = true;
     }
     if (any) tests.push(test);
   }

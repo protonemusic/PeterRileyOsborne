@@ -42,12 +42,23 @@ function allTests(db) {
   return tests;
 }
 
+/** Students with their sports (joined names) and boys/girls from those sports. */
 function students(db, sportId) {
-  return db.prepare(`SELECT st.id, st.first_name || ' ' || st.last_name AS name, st.sport_id AS sportId,
-      sp.name AS sportName, sp.gender
-    FROM students st LEFT JOIN sports sp ON sp.id = st.sport_id
-    ${sportId ? 'WHERE st.sport_id = ?' : ''}
+  const rows = db.prepare(`SELECT st.id, st.first_name || ' ' || st.last_name AS name FROM students st
+    ${sportId ? 'WHERE EXISTS (SELECT 1 FROM student_sports ss WHERE ss.student_id = st.id AND ss.sport_id = ?)' : ''}
     ORDER BY st.last_name COLLATE NOCASE, st.first_name COLLATE NOCASE`).all(...(sportId ? [sportId] : []));
+  const sportsOf = new Map();
+  for (const r of db.prepare(`SELECT ss.student_id AS sid, sp.name, sp.gender FROM student_sports ss
+    JOIN sports sp ON sp.id = ss.sport_id ORDER BY sp.name COLLATE NOCASE`).all()) {
+    if (!sportsOf.has(r.sid)) sportsOf.set(r.sid, []);
+    sportsOf.get(r.sid).push(r);
+  }
+  return rows.map((st) => {
+    const list = sportsOf.get(st.id) || [];
+    // Boys or girls when the student's sports that are set agree (coed/unset sports don't count).
+    const genders = [...new Set(list.map((x) => x.gender).filter(Boolean))];
+    return { ...st, sportName: list.map((x) => x.name).join(', '), gender: genders.length === 1 ? genders[0] : '' };
+  });
 }
 
 function groupTests(db) {
@@ -113,6 +124,7 @@ function personalBests(db, { sportId } = {}) {
 function hallOfFame(db, { limit = 5 } = {}) {
   const byStudent = groupTests(db);
   const out = { boys: [], girls: [], notSet: 0 };
+  // notSet: tested students whose sports aren't set to boys or girls (or are set to both).
   for (const st of students(db)) {
     const tests = byStudent.get(st.id);
     if (!tests) continue;

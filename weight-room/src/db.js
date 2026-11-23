@@ -97,6 +97,34 @@ CREATE TABLE IF NOT EXISTS student_workouts (
 );
 CREATE INDEX IF NOT EXISTS idx_student_workouts ON student_workouts(student_id, assigned_date);
 
+-- A student can play several sports.
+CREATE TABLE IF NOT EXISTS student_sports (
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  sport_id   INTEGER NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
+  PRIMARY KEY (student_id, sport_id)
+);
+
+-- The student's sports at the time of a sign-in; each sport's coaches are emailed once.
+CREATE TABLE IF NOT EXISTS sign_in_sports (
+  sign_in_id  INTEGER NOT NULL REFERENCES sign_ins(id) ON DELETE CASCADE,
+  sport_id    INTEGER NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
+  notified_at TEXT,
+  PRIMARY KEY (sign_in_id, sport_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sign_in_sports_pending ON sign_in_sports(notified_at);
+
+-- Which of Fall / Winter / Spring each sport is played in.
+CREATE TABLE IF NOT EXISTS sport_seasons (
+  sport_id INTEGER NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
+  season   TEXT NOT NULL CHECK (season IN ('fall', 'winter', 'spring')),
+  PRIMARY KEY (sport_id, season)
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id            INTEGER PRIMARY KEY,
   sent_at       TEXT NOT NULL,
@@ -113,6 +141,7 @@ function openDb(file) {
   if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
   migrate(db);
+  migrateData(db);
   return db;
 }
 
@@ -131,6 +160,32 @@ function migrate(db) {
     const { guessGender } = require('./stats');
     const set = db.prepare('UPDATE sports SET gender = ? WHERE id = ?');
     for (const sp of db.prepare('SELECT id, name FROM sports').all()) set.run(guessGender(sp.name), sp.id);
+  }
+}
+
+/** One-time data moves from the older single-sport / date-based-season layout. */
+function migrateData(db) {
+  const done = (key) => db.prepare('SELECT 1 FROM settings WHERE key = ?').get(key);
+  const mark = (key) => db.prepare("INSERT INTO settings (key, value) VALUES (?, 'true')").run(key);
+
+  if (!done('migrated_student_sports')) {
+    db.exec(`INSERT OR IGNORE INTO student_sports (student_id, sport_id)
+      SELECT id, sport_id FROM students WHERE sport_id IS NOT NULL`);
+    db.exec(`INSERT OR IGNORE INTO sign_in_sports (sign_in_id, sport_id, notified_at)
+      SELECT id, sport_id, notified_at FROM sign_ins WHERE sport_id IS NOT NULL`);
+    mark('migrated_student_sports');
+  }
+
+  if (!done('migrated_sport_seasons')) {
+    // Name each dated season Fall/Winter/Spring from its label, or else from when it started.
+    for (const se of db.prepare('SELECT sport_id, label, start_date FROM seasons').all()) {
+      const named = (se.label.match(/fall|winter|spring/i) || [])[0];
+      const month = Number(se.start_date.slice(5, 7));
+      const season = named ? named.toLowerCase()
+        : month >= 7 && month <= 10 ? 'fall' : month >= 11 || month <= 2 ? 'winter' : 'spring';
+      db.prepare('INSERT OR IGNORE INTO sport_seasons (sport_id, season) VALUES (?, ?)').run(se.sport_id, season);
+    }
+    mark('migrated_sport_seasons');
   }
 }
 

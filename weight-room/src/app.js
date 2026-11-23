@@ -6,10 +6,11 @@ const express = require('express');
 const { tx } = require('./db');
 const { localDate, formatTime, formatDay, isValidDate } = require('./time');
 const users = require('./users');
-const { parseImport, applyImport, SEASON_NAMES } = require('./importer');
+const { parseImport, applyImport } = require('./importer');
 const QRCode = require('qrcode');
 const workouts = require('./workouts');
 const stats = require('./stats');
+const sportsMod = require('./sports');
 const { parseProgramFile, label: dayLabel } = require('./programParser');
 
 const COOKIE = 'wr_session';
@@ -61,13 +62,22 @@ function createApp({ db, mailer, config }) {
     return sport;
   };
 
-  function inSeasonSports() {
-    return db.prepare(`
-      SELECT DISTINCT s.id, s.name FROM sports s
-      JOIN seasons se ON se.sport_id = s.id
-      WHERE se.start_date <= ? AND se.end_date >= ?
-      ORDER BY s.name COLLATE NOCASE`).all(today(), today());
+  /** One or more valid sport ids from a request (sportIds array, or a single sportId). */
+  function requireSports(body, { optional = false } = {}) {
+    let ids = Array.isArray(body?.sportIds) ? body.sportIds : body?.sportId != null && body.sportId !== '' ? [body.sportId] : [];
+    ids = [...new Set(ids.map((v) => toId(v, 'sport')))];
+    if (!ids.length) {
+      if (optional) return null;
+      throw bad('Please choose at least one sport');
+    }
+    if (ids.length > 20) throw bad('Too many sports');
+    for (const id of ids) if (!getSport(id)) throw bad('Please choose a valid sport');
+    return ids;
   }
+  const withSports = (student) => {
+    const list = sportsMod.studentSports(db, student.id);
+    return { ...student, sports: list, sportIds: list.map((x) => x.id), sportName: sportsMod.sportNames(list) };
+  };
 
   // ---------- sessions ----------
   const hashToken = (token) => crypto.createHash('sha256').update(token).digest('base64url');
@@ -235,9 +245,7 @@ function createApp({ db, mailer, config }) {
 
   // Every sport, flagged when it's in season today (students may pick any of them).
   kiosk.get('/sports', (_req, res) => {
-    const active = new Set(inSeasonSports().map((s) => s.id));
-    const all = db.prepare('SELECT id, name FROM sports ORDER BY name COLLATE NOCASE').all();
-    res.json({ sports: all.map((s) => ({ ...s, inSeason: active.has(s.id) })) });
+    res.json({ sports: sportsMod.allSports(db, today()).map(({ id, name, inSeason }) => ({ id, name, inSeason })) });
   });
 
   kiosk.get('/students/search', (req, res) => {
@@ -245,21 +253,20 @@ function createApp({ db, mailer, config }) {
     if (!q) return res.json({ students: [] });
     const like = `${escapeLike(q)}%`;
     const students = db.prepare(`
-      SELECT st.id, st.first_name AS firstName, st.last_name AS lastName,
-             st.sport_id AS sportId, sp.name AS sportName
-      FROM students st LEFT JOIN sports sp ON sp.id = st.sport_id
+      SELECT st.id, st.first_name AS firstName, st.last_name AS lastName
+      FROM students st
       WHERE (st.first_name || ' ' || st.last_name) LIKE ? ESCAPE '\\'
          OR st.last_name LIKE ? ESCAPE '\\'
          OR (st.last_name || ', ' || st.first_name) LIKE ? ESCAPE '\\'
       ORDER BY st.last_name COLLATE NOCASE, st.first_name COLLATE NOCASE
       LIMIT 10`).all(like, like, like);
-    res.json({ students });
+    res.json({ students: students.map(withSports) });
   });
 
   kiosk.post('/signup', async (req, res) => {
     const firstName = cleanName(req.body?.firstName, 'First name');
     const lastName = cleanName(req.body?.lastName, 'Last name');
-    const sport = requireSport(req.body?.sportId);
+    const sportIds = requireSports(req.body);
     const existing = db.prepare(`SELECT id FROM students
       WHERE first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE`).get(firstName, lastName);
     if (existing) {
@@ -267,12 +274,13 @@ function createApp({ db, mailer, config }) {
     }
     // Signing up also signs the student in for their first day.
     const { studentId, signInId, workout, signedInAt } = tx(db, () => {
-      const id = Number(db.prepare(`INSERT INTO students (first_name, last_name, sport_id, created_at)
-        VALUES (?, ?, ?, ?)`).run(firstName, lastName, sport.id, now().toISOString()).lastInsertRowid);
-      return { studentId: id, ...recordSignIn(id, sport.id) };
+      const id = Number(db.prepare(`INSERT INTO students (first_name, last_name, created_at)
+        VALUES (?, ?, ?)`).run(firstName, lastName, now().toISOString()).lastInsertRowid);
+      sportsMod.setStudentSports(db, id, sportIds);
+      return { studentId: id, ...recordSignIn(id) };
     });
     res.status(201).json({
-      student: { id: studentId, firstName, lastName, sportId: sport.id, sportName: sport.name },
+      student: withSports({ id: studentId, firstName, lastName }),
       signedIn: true, alreadySignedIn: false, name: `${firstName} ${lastName}`,
       time: formatTime(signedInAt, tz), signInId,
       ...(await workoutLink(req, studentId, workout)),
@@ -280,27 +288,27 @@ function createApp({ db, mailer, config }) {
   });
 
   /** Insert a sign-in for now and give the student today's workout. Call inside a transaction. */
-  function recordSignIn(studentId, sportId) {
+  function recordSignIn(studentId) {
     const signedInAt = now().toISOString();
+    const ids = sportsMod.studentSports(db, studentId).map((x) => x.id);
     const signInId = Number(db.prepare('INSERT INTO sign_ins (student_id, sport_id, signed_in_at) VALUES (?, ?, ?)')
-      .run(studentId, sportId, signedInAt).lastInsertRowid);
+      .run(studentId, ids[0] ?? null, signedInAt).lastInsertRowid);
+    // Remember the student's sports for this sign-in, so each sport's coaches hear about it.
+    const ins = db.prepare('INSERT INTO sign_in_sports (sign_in_id, sport_id) VALUES (?, ?)');
+    for (const id of ids) ins.run(signInId, id);
     const workout = workouts.assignWorkout(db, { studentId, signInId, today: today(), tz });
     return { signInId, signedInAt, workout };
   }
 
   kiosk.post('/signin', async (req, res) => {
     const studentId = toId(req.body?.studentId, 'student');
-    const student = db.prepare('SELECT id, first_name, last_name, sport_id FROM students WHERE id = ?').get(studentId);
+    const student = db.prepare('SELECT id, first_name, last_name FROM students WHERE id = ?').get(studentId);
     if (!student) throw notFound('Student');
 
-    let sportId = student.sport_id;
-    if (req.body?.sportId != null && req.body.sportId !== '') {
-      sportId = requireSport(req.body.sportId).id;
-      if (sportId !== student.sport_id) {
-        db.prepare('UPDATE students SET sport_id = ? WHERE id = ?').run(sportId, studentId);
-      }
-    }
-    if (sportId == null) throw bad('Please choose your current sport');
+    // The student can change their sports while signing in.
+    const newSports = requireSports(req.body, { optional: true });
+    if (newSports) sportsMod.setStudentSports(db, studentId, newSports);
+    if (!sportsMod.studentSports(db, studentId).length) throw bad('Please choose at least one sport');
 
     const name = `${student.first_name} ${student.last_name}`;
     const last = db.prepare(`SELECT id, signed_in_at FROM sign_ins WHERE student_id = ?
@@ -315,7 +323,7 @@ function createApp({ db, mailer, config }) {
       });
     }
 
-    const { signInId, signedInAt, workout } = tx(db, () => recordSignIn(studentId, sportId));
+    const { signInId, signedInAt, workout } = tx(db, () => recordSignIn(studentId));
     res.status(201).json({
       alreadySignedIn: false, name, time: formatTime(signedInAt, tz), signInId,
       ...(await workoutLink(req, studentId, workout)),
@@ -338,24 +346,12 @@ function createApp({ db, mailer, config }) {
     res.json({ user: publicUser(req.user), emailConfigured: mailer.configured, today: today(), timeZone: tz });
   });
 
-  // Sports, with their seasons and coaches
+  // Sports, with their seasons (Fall/Winter/Spring) and coaches
   admin.get('/sports', (_req, res) => {
-    const t = today();
-    const sports = db.prepare('SELECT id, name, gender FROM sports ORDER BY name COLLATE NOCASE').all();
-    const seasons = db.prepare(`SELECT id, sport_id AS sportId, label, start_date AS startDate,
-      end_date AS endDate FROM seasons ORDER BY start_date`).all();
     const coaches = db.prepare('SELECT id, sport_id AS sportId, name, email FROM coaches ORDER BY name COLLATE NOCASE').all();
     res.json({
-      sports: sports.map((s) => {
-        const own = seasons.filter((se) => se.sportId === s.id)
-          .map((se) => ({ ...se, current: se.startDate <= t && se.endDate >= t }));
-        return {
-          ...s,
-          inSeason: own.some((se) => se.current),
-          seasons: own,
-          coaches: coaches.filter((c) => c.sportId === s.id),
-        };
-      }),
+      sports: sportsMod.allSports(db, today()).map((s) => ({ ...s, coaches: coaches.filter((c) => c.sportId === s.id) })),
+      currentSeasons: sportsMod.currentSeasons(db, today()),
     });
   });
 
@@ -390,36 +386,25 @@ function createApp({ db, mailer, config }) {
     res.json({ ok: true });
   });
 
-  function seasonFields(body) {
-    const label = typeof body?.label === 'string' ? body.label.trim().slice(0, 50) : '';
-    const { startDate, endDate } = body || {};
-    if (!isValidDate(startDate)) throw bad('Start date is required');
-    if (!isValidDate(endDate)) throw bad('End date is required');
-    if (startDate > endDate) throw bad('Start date must be on or before end date');
-    return { label, startDate, endDate };
-  }
-
-  admin.post('/sports/:id/seasons', (req, res) => {
-    const sportId = toId(req.params.id);
-    if (!getSport(sportId)) throw notFound('Sport');
-    const { label, startDate, endDate } = seasonFields(req.body);
-    const { lastInsertRowid } = db.prepare(`INSERT INTO seasons (sport_id, label, start_date, end_date)
-      VALUES (?, ?, ?, ?)`).run(sportId, label, startDate, endDate);
-    res.status(201).json({ id: Number(lastInsertRowid), sportId, label, startDate, endDate });
-  });
-
-  admin.put('/seasons/:id', (req, res) => {
+  // Which seasons a sport is played in: any of fall, winter, spring.
+  admin.put('/sports/:id/seasons', (req, res) => {
     const id = toId(req.params.id);
-    const { label, startDate, endDate } = seasonFields(req.body);
-    const r = db.prepare('UPDATE seasons SET label = ?, start_date = ?, end_date = ? WHERE id = ?')
-      .run(label, startDate, endDate, id);
-    if (r.changes === 0) throw notFound('Season');
-    res.json({ id, label, startDate, endDate });
+    if (!getSport(id)) throw notFound('Sport');
+    const seasons = Array.isArray(req.body?.seasons) ? req.body.seasons : [];
+    if (seasons.some((x) => !sportsMod.SEASONS.includes(x))) throw bad('Seasons must be fall, winter or spring');
+    sportsMod.setSportSeasons(db, id, seasons);
+    res.json({ id, seasons: sportsMod.sportSeasons(db).get(id) || [] });
   });
 
-  admin.delete('/seasons/:id', (req, res) => {
-    if (db.prepare('DELETE FROM seasons WHERE id = ?').run(toId(req.params.id)).changes === 0) throw notFound('Season');
-    res.json({ ok: true });
+  // When Fall, Winter and Spring run (month-day, every year), for the whole school.
+  admin.get('/season-dates', (_req, res) => {
+    res.json({ ranges: sportsMod.seasonRanges(db), currentSeasons: sportsMod.currentSeasons(db, today()) });
+  });
+
+  admin.put('/season-dates', (req, res) => {
+    const error = sportsMod.saveSeasonRanges(db, req.body?.ranges);
+    if (error) throw bad(error);
+    res.json({ ranges: sportsMod.seasonRanges(db), currentSeasons: sportsMod.currentSeasons(db, today()) });
   });
 
   /** Coach name and email. The email is optional (it can be added later), but one of the two is required. */
@@ -451,21 +436,10 @@ function createApp({ db, mailer, config }) {
   admin.post('/import', (req, res) => {
     const parsed = parseImport(req.body?.text);
     if (!parsed.sports.length) throw bad('No sports found. Put each sport on its own line.');
-    const seasonDates = {};
-    for (const key of SEASON_NAMES) {
-      const d = req.body?.seasons?.[key];
-      if (!d) continue;
-      const label = typeof d.label === 'string' ? d.label.trim().slice(0, 50) : '';
-      if (!isValidDate(d.startDate) || !isValidDate(d.endDate)) throw bad(`Please enter ${key} start and end dates`);
-      if (d.startDate > d.endDate) throw bad(`The ${key} start date must be on or before its end date`);
-      seasonDates[key] = { label, startDate: d.startDate, endDate: d.endDate };
-    }
-    const missing = [...new Set(parsed.sports.flatMap((s) => s.seasons))].filter((k) => !seasonDates[k]);
-    if (missing.length) throw bad(`Please enter dates for: ${missing.join(', ')}`);
     const dryRun = req.body?.dryRun === true;
     const summary = dryRun
-      ? applyImport(db, parsed, seasonDates, { dryRun })
-      : tx(db, () => applyImport(db, parsed, seasonDates));
+      ? applyImport(db, parsed, { dryRun })
+      : tx(db, () => applyImport(db, parsed));
     res.json({ dryRun, warnings: parsed.warnings, sports: summary });
   });
 
@@ -477,16 +451,19 @@ function createApp({ db, mailer, config }) {
   // Students
   admin.get('/students', (_req, res) => {
     const students = db.prepare(`
-      SELECT st.id, st.first_name AS firstName, st.last_name AS lastName, st.sport_id AS sportId,
-             sp.name AS sportName, COUNT(si.id) AS signInCount, MAX(si.signed_in_at) AS lastSignIn
+      SELECT st.id, st.first_name AS firstName, st.last_name AS lastName,
+             COUNT(si.id) AS signInCount, MAX(si.signed_in_at) AS lastSignIn
       FROM students st
-      LEFT JOIN sports sp ON sp.id = st.sport_id
       LEFT JOIN sign_ins si ON si.student_id = st.id
       GROUP BY st.id
       ORDER BY st.last_name COLLATE NOCASE, st.first_name COLLATE NOCASE`).all();
+    const bySt = sportsMod.sportsByStudent(db);
     res.json({
       students: students.map((s) => ({
         ...s,
+        sports: bySt.get(s.id) || [],
+        sportIds: (bySt.get(s.id) || []).map((x) => x.id),
+        sportName: sportsMod.sportNames(bySt.get(s.id)),
         workout: workouts.progressFor(db, s.id),
         lastSignIn: s.lastSignIn ? `${formatDay(s.lastSignIn, tz)}, ${formatTime(s.lastSignIn, tz)}` : null,
       })),
@@ -497,13 +474,13 @@ function createApp({ db, mailer, config }) {
     const id = toId(req.params.id);
     const firstName = cleanName(req.body?.firstName, 'First name');
     const lastName = cleanName(req.body?.lastName, 'Last name');
-    const sportId = req.body?.sportId ? requireSport(req.body.sportId).id : null;
+    const sportIds = requireSports(req.body, { optional: true }) || [];
     const clash = db.prepare(`SELECT id FROM students WHERE first_name = ? COLLATE NOCASE
       AND last_name = ? COLLATE NOCASE AND id <> ?`).get(firstName, lastName, id);
     if (clash) throw bad(`Another student is already named ${firstName} ${lastName}`);
-    const r = db.prepare('UPDATE students SET first_name = ?, last_name = ?, sport_id = ? WHERE id = ?')
-      .run(firstName, lastName, sportId, id);
+    const r = db.prepare('UPDATE students SET first_name = ?, last_name = ? WHERE id = ?').run(firstName, lastName, id);
     if (r.changes === 0) throw notFound('Student');
+    sportsMod.setStudentSports(db, id, sportIds);
     res.json({ ok: true });
   });
 
@@ -593,18 +570,23 @@ function createApp({ db, mailer, config }) {
     const from = new Date(Date.parse(`${date}T00:00:00Z`) - 36 * 3600 * 1000).toISOString();
     const to = new Date(Date.parse(`${date}T00:00:00Z`) + 60 * 3600 * 1000).toISOString();
     const rows = db.prepare(`
-      SELECT si.id, si.signed_in_at AS signedInAt, si.notified_at AS notifiedAt,
-             st.first_name || ' ' || st.last_name AS name, sp.name AS sportName
+      SELECT si.id, si.signed_in_at AS signedInAt,
+             st.first_name || ' ' || st.last_name AS name,
+             (SELECT GROUP_CONCAT(name, ', ') FROM (SELECT sp.name FROM sign_in_sports x JOIN sports sp ON sp.id = x.sport_id
+               WHERE x.sign_in_id = si.id ORDER BY sp.name COLLATE NOCASE)) AS sportName,
+             (SELECT COUNT(*) FROM sign_in_sports x WHERE x.sign_in_id = si.id AND x.notified_at IS NULL) AS pending,
+             (SELECT COUNT(*) FROM sign_in_sports x WHERE x.sign_in_id = si.id) AS sportCount
       FROM sign_ins si
       JOIN students st ON st.id = si.student_id
-      LEFT JOIN sports sp ON sp.id = si.sport_id
       WHERE si.signed_in_at >= ? AND si.signed_in_at < ?
       ORDER BY si.signed_in_at`).all(from, to);
     res.json({
       date,
       signIns: rows
         .filter((r) => localDate(new Date(r.signedInAt), tz) === date)
-        .map((r) => ({ ...r, time: formatTime(r.signedInAt, tz), notified: Boolean(r.notifiedAt) })),
+        .map(({ pending, sportCount, ...r }) => ({
+          ...r, time: formatTime(r.signedInAt, tz), notified: sportCount > 0 && pending === 0,
+        })),
     });
   });
 
@@ -614,16 +596,19 @@ function createApp({ db, mailer, config }) {
   });
 
   // ---------- Notify coaches ----------
-  /** Sign-ins not yet emailed, grouped by sport, with each sport's coaches and email. */
+  /**
+   * Sign-ins not yet emailed, grouped by sport, with each sport's coaches and email.
+   * A student who plays several sports appears under each of them.
+   */
   function pendingBySport() {
     const rows = db.prepare(`
-      SELECT si.id, si.signed_in_at AS signedInAt, si.sport_id AS sportId,
-             COALESCE(sp.name, 'No sport') AS sportName,
+      SELECT si.id, si.signed_in_at AS signedInAt, x.sport_id AS sportId, sp.name AS sportName,
              st.first_name AS firstName, st.last_name AS lastName
-      FROM sign_ins si
+      FROM sign_in_sports x
+      JOIN sign_ins si ON si.id = x.sign_in_id
       JOIN students st ON st.id = si.student_id
-      LEFT JOIN sports sp ON sp.id = si.sport_id
-      WHERE si.notified_at IS NULL
+      JOIN sports sp ON sp.id = x.sport_id
+      WHERE x.notified_at IS NULL
       ORDER BY sp.name COLLATE NOCASE, si.signed_in_at`).all();
     const coachStmt = db.prepare('SELECT name, email FROM coaches WHERE sport_id = ? ORDER BY name COLLATE NOCASE');
     const groups = new Map();
@@ -694,8 +679,8 @@ function createApp({ db, mailer, config }) {
       }
       const sentAt = now().toISOString();
       tx(db, () => {
-        const mark = db.prepare('UPDATE sign_ins SET notified_at = ? WHERE id = ?');
-        for (const s of g.signIns) mark.run(sentAt, s.id);
+        const mark = db.prepare('UPDATE sign_in_sports SET notified_at = ? WHERE sign_in_id = ? AND sport_id = ?');
+        for (const s of g.signIns) mark.run(sentAt, s.id, g.sportId);
         db.prepare(`INSERT INTO notifications (sent_at, sport_name, recipients, sign_in_count)
           VALUES (?, ?, ?, ?)`).run(sentAt, g.sportName, withEmail.map((c) => c.email).join(', '), g.signIns.length);
       });

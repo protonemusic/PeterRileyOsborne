@@ -43,30 +43,42 @@ async function loadSports() {
   } catch {
     sports = [];
   }
-  fillSportSelect($('signup-sport'), null);
+  fillSportChecks($('signup-sports'), []);
 }
 
-function fillSportSelect(select, current) {
-  select.replaceChildren();
-  if (!current) select.append(new Option('Choose your sport…', ''));
-  const option = (s) => new Option(s.name, s.id, false, current?.id === s.id);
+/** Checkboxes for every sport, in-season ones first. Any number can be chosen. */
+function fillSportChecks(fieldset, selectedIds) {
+  const box = fieldset.querySelector('.sport-check-groups');
+  const chosen = new Set(selectedIds);
+  box.replaceChildren();
   const inSeason = sports.filter((s) => s.inSeason);
   const other = sports.filter((s) => !s.inSeason);
-  if (current && !sports.some((s) => s.id === current.id)) other.push(current);
-  // Group in-season sports first; any sport can be chosen.
-  if (inSeason.length) {
-    const g = document.createElement('optgroup');
-    g.label = 'In season';
-    g.append(...inSeason.map(option));
-    select.append(g);
-  }
-  if (other.length) {
-    const g = document.createElement('optgroup');
-    g.label = inSeason.length ? 'Other sports' : 'All sports';
-    g.append(...other.map(option));
-    select.append(g);
-  }
+  const group = (title, list) => {
+    if (!list.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'sport-check-group';
+    const h = document.createElement('div');
+    h.className = 'sport-check-title';
+    h.textContent = title;
+    wrap.append(h);
+    for (const s of list) {
+      const label = document.createElement('label');
+      label.className = 'sport-check';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = s.id;
+      input.checked = chosen.has(s.id);
+      label.append(input, document.createTextNode(s.name));
+      wrap.append(label);
+    }
+    box.append(wrap);
+  };
+  group('In season', inSeason);
+  group(inSeason.length ? 'Other sports' : 'All sports', other);
+  if (!sports.length) box.textContent = 'No sports have been added yet.';
 }
+
+const checkedSports = (fieldset) => [...fieldset.querySelectorAll('input:checked')].map((i) => Number(i.value));
 
 // ---------- sign in ----------
 const search = $('name-search');
@@ -144,7 +156,13 @@ function choose(student) {
   $('search-box').hidden = true;
   $('selected-box').hidden = false;
   $('selected-name').textContent = `${student.firstName} ${student.lastName}`;
-  fillSportSelect($('signin-sport'), student.sportId ? { id: student.sportId, name: student.sportName } : null);
+  // Their sports are shown; "Change" opens the checkboxes. A student with no sports must pick.
+  fillSportChecks($('signin-sports'), student.sportIds || []);
+  $('signin-sports-text').textContent = student.sportName || 'None yet';
+  const pick = !(student.sportIds || []).length;
+  $('signin-sports').hidden = !pick;
+  $('signin-sports-change').hidden = pick;
+  $('signin-sports-change').setAttribute('aria-expanded', String(pick));
   $('signin-btn').disabled = false;
   $('signin-btn').focus();
 }
@@ -160,6 +178,12 @@ function resetSignIn() {
   closeSuggestions();
 }
 $('change-name').addEventListener('click', () => { resetSignIn(); search.focus(); });
+$('signin-sports-change').addEventListener('click', () => {
+  $('signin-sports').hidden = false;
+  $('signin-sports-change').hidden = true;
+  $('signin-sports-change').setAttribute('aria-expanded', 'true');
+  $('signin-sports').querySelector('input')?.focus();
+});
 
 $('signin-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -169,7 +193,8 @@ $('signin-form').addEventListener('submit', async (e) => {
   try {
     const data = await api('/api/signin', {
       method: 'POST',
-      body: { studentId: selected.id, sportId: $('signin-sport').value || null },
+      // Only send sports if they opened "Change" (or had none).
+      body: { studentId: selected.id, ...($('signin-sports').hidden ? {} : { sportIds: checkedSports($('signin-sports')) }) },
     });
     const first = data.name.split(' ')[0];
     showSuccess(
@@ -186,7 +211,7 @@ $('signin-form').addEventListener('submit', async (e) => {
 // ---------- sign up ----------
 function resetSignUp() {
   $('signup-form').reset();
-  fillSportSelect($('signup-sport'), null);
+  fillSportChecks($('signup-sports'), []);
   showMessage($('signup-msg'), '');
 }
 
@@ -201,7 +226,7 @@ $('signup-form').addEventListener('submit', async (e) => {
       body: {
         firstName: $('first-name').value,
         lastName: $('last-name').value,
-        sportId: $('signup-sport').value,
+        sportIds: checkedSports($('signup-sports')),
       },
     });
     resetSignUp();

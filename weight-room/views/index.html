@@ -39,8 +39,14 @@
             <button type="button" class="link" id="change-name">Not you?</button>
           </div>
           <div class="field">
-            <label for="signin-sport">Current sport</label>
-            <select id="signin-sport"></select>
+            <div class="sports-summary">
+              <span><span class="muted">Your sports:</span> <strong id="signin-sports-text"></strong></span>
+              <button type="button" class="link" id="signin-sports-change" aria-expanded="false" aria-controls="signin-sports">Change</button>
+            </div>
+            <fieldset class="sport-checks" id="signin-sports" hidden>
+              <legend>Your sports (choose all you play)</legend>
+              <div class="sport-check-groups"></div>
+            </fieldset>
           </div>
         </div>
 
@@ -62,10 +68,10 @@
             <input id="last-name" required maxlength="50" autocapitalize="words" autocorrect="off" spellcheck="false">
           </div>
         </div>
-        <div class="field">
-          <label for="signup-sport">Current sport</label>
-          <select id="signup-sport" required></select>
-        </div>
+        <fieldset class="field sport-checks" id="signup-sports">
+          <legend>Your sports (choose all you play)</legend>
+          <div class="sport-check-groups"></div>
+        </fieldset>
         <button type="submit" class="primary big">Sign Up</button>
       </form>
     </section>

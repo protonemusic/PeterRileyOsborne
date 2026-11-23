@@ -288,8 +288,10 @@ function saveResults(db, studentId, workoutId, body, nowIso) {
 }
 
 function dashboard(db, token, today) {
-  const student = db.prepare(`SELECT st.id, st.first_name AS firstName, st.last_name AS lastName, sp.name AS sportName
-    FROM students st LEFT JOIN sports sp ON sp.id = st.sport_id WHERE st.workout_token = ?`).get(token);
+  const student = db.prepare(`SELECT st.id, st.first_name AS firstName, st.last_name AS lastName,
+      (SELECT GROUP_CONCAT(name, ', ') FROM (SELECT sp.name FROM student_sports ss JOIN sports sp ON sp.id = ss.sport_id
+        WHERE ss.student_id = st.id ORDER BY sp.name COLLATE NOCASE)) AS sportName
+    FROM students st WHERE st.workout_token = ?`).get(token);
   if (!student) return null;
   const program = activeProgram(db);
   const rows = db.prepare(`SELECT sw.*, (SELECT COUNT(*) FROM program_days d WHERE d.program_id = sw.program_id) AS total

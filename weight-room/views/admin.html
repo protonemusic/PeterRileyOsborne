@@ -65,8 +65,16 @@
       <!-- Sports -->
       <section data-panel="sports" hidden>
         <div class="card">
+          <h2>Season Dates</h2>
+          <p class="muted small">When Fall, Winter and Spring run at school, every year. Sports in the current season show as "In season".</p>
+          <div id="season-dates" class="season-dates"></div>
+          <button type="button" id="season-dates-save" style="margin-top:12px">Save Season Dates</button>
+        </div>
+
+        <div class="card">
           <div class="card-head"><h2>Sports</h2></div>
-          <p class="muted small">Students can pick any sport. Sports in season today are listed first, under "In season".</p>
+          <p class="muted small">Students can pick any sports (as many as they play). Sports in season today are listed first, under "In season".
+            Set each sport's seasons (Fall, Winter, Spring) and Boys/Girls by tapping it below.</p>
           <form class="inline-form" id="add-sport-form" style="margin-bottom:18px">
             <input id="new-sport" placeholder="New sport, e.g. Football" required maxlength="50">
             <button class="primary" type="submit">Add Sport</button>
@@ -78,35 +86,12 @@
           <summary><h2 style="display:inline">Import Sports &amp; Coaches</h2></summary>
           <p class="muted small" style="margin-top:12px">
             Paste a list with a season heading (Fall, Winter, Spring) above its sports and a "Head Coach:" line under
-            each sport. A coach line can include an email address. Sports, seasons and coaches already in the app
+            each sport. A sport listed under two seasons gets both. A coach line can include an email address. Sports, seasons and coaches already in the app
             are not added twice, so it's safe to import the same list again.
           </p>
           <div class="field">
             <label for="import-text">List</label>
             <textarea id="import-text" rows="12" placeholder="FALL&#10;Football&#10;Head Coach: Pat Jones&#10;&#10;WINTER&#10;Wrestling&#10;Head Coach: Sam Lee coach.lee@school.org"></textarea>
-          </div>
-          <div class="field">
-            <label>Season dates</label>
-            <div class="season-grid">
-              <div class="season-row">
-                <strong>Fall</strong>
-                <input id="imp-fall-label" maxlength="50" aria-label="Fall label">
-                <input id="imp-fall-start" type="date" aria-label="Fall start date">
-                <input id="imp-fall-end" type="date" aria-label="Fall end date">
-              </div>
-              <div class="season-row">
-                <strong>Winter</strong>
-                <input id="imp-winter-label" maxlength="50" aria-label="Winter label">
-                <input id="imp-winter-start" type="date" aria-label="Winter start date">
-                <input id="imp-winter-end" type="date" aria-label="Winter end date">
-              </div>
-              <div class="season-row">
-                <strong>Spring</strong>
-                <input id="imp-spring-label" maxlength="50" aria-label="Spring label">
-                <input id="imp-spring-start" type="date" aria-label="Spring start date">
-                <input id="imp-spring-end" type="date" aria-label="Spring end date">
-              </div>
-            </div>
           </div>
           <div class="row" style="gap:8px;flex-wrap:nowrap">
             <button type="button" id="import-preview" style="flex:0 0 auto">Preview</button>

@@ -15,8 +15,12 @@ function setupDb() {
   const ids = { football: sport('Football', 'boys'), soccer: sport('Girls Soccer', 'girls'), cheer: sport('Cheerleading', '') };
   const pid = workouts.saveProgram(db, { name: 'P', days: [] }, '2026-01-01T00:00:00Z');
   let n = 0;
-  const student = (first, sportId) => Number(db.prepare(`INSERT INTO students (first_name, last_name, sport_id, created_at)
-    VALUES (?, ?, ?, '2026-01-01')`).run(first, `Last${++n}`, sportId).lastInsertRowid);
+  const student = (first, ...sportIds) => {
+    const id = Number(db.prepare(`INSERT INTO students (first_name, last_name, sport_id, created_at)
+      VALUES (?, ?, ?, '2026-01-01')`).run(first, `Last${++n}`, sportIds[0]).lastInsertRowid);
+    for (const sid of sportIds) db.prepare('INSERT INTO student_sports (student_id, sport_id) VALUES (?, ?)').run(id, sid);
+    return id;
+  };
   // Log a test: weights for 6 reps (estimated 1RM = weight x 1.18).
   const logTest = (studentId, date, [bench, squat, dead], day = 1) => {
     const items = [...(day === 1 ? [{ done: true }] : []), ...[bench, squat, dead].map((w) => ({ sets: [{ weight: w == null ? '' : String(w), reps: '6' }] }))];
@@ -223,4 +227,18 @@ test('CSV export: escaped fields, totals row, both Hall of Fame groups; staff-on
     assert.equal((await fetch(`${base}/api/admin/personal-bests.csv`, { headers: { Cookie: cookie } })).status, 403);
     assert.equal((await fetch(`${base}/api/admin/hall-of-fame.csv`, { headers: { Cookie: cookie } })).status, 403);
   } finally { await new Promise((r) => server.close(r)); }
+});
+
+test('multi-sport students: listed under each sport; boys/girls only when their sports agree', () => {
+  const { db, ids, student, logTest } = setupDb();
+  const both = student('Bo', ids.football, ids.cheer); // boys + unset: counts as boys
+  const mixed = student('Mix', ids.football, ids.soccer); // boys + girls: not set
+  logTest(both, '2026-09-01', [100, 100, 100]);
+  logTest(mixed, '2026-09-01', [100, 100, 100]);
+  assert.deepEqual(stats.personalBests(db, { sportId: ids.cheer }).rows.map((r) => r.name), ['Bo Last1']);
+  assert.deepEqual(stats.personalBests(db, { sportId: ids.football }).rows.map((r) => r.name), ['Bo Last1', 'Mix Last2']);
+  assert.equal(stats.personalBests(db).rows[0].sportName, 'Cheerleading, Football');
+  const hof = stats.hallOfFame(db);
+  assert.deepEqual(hof.boys.map((r) => r.name), ['Bo Last1']);
+  assert.equal(hof.notSet, 1);
 });

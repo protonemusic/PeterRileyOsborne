@@ -62,7 +62,7 @@ async function start() {
 let currentView = 'today';
 const loaders = {
   today: () => Promise.all([loadPreview(), loadSignIns()]),
-  sports: () => loadSports().then(renderSports),
+  sports: () => Promise.all([loadSports().then(renderSports), loadSeasonDates()]),
   students: () => loadSports().then(loadStudents),
   history: loadHistory,
   bests: () => loadSports().then(loadBests),
@@ -84,11 +84,21 @@ async function loadSports() {
   state.sports = (await api('/api/admin/sports')).sports;
 }
 
-function sportSelect(current, { allowNone = true } = {}) {
-  const sel = h('select');
-  if (allowNone) sel.append(new Option('— none —', ''));
-  for (const s of state.sports) sel.append(new Option(s.name, s.id, false, s.id === current));
-  return sel;
+/** A compact "pick several sports" control: shows the chosen names; tap to open checkboxes. */
+function sportPicker(selectedIds) {
+  const chosen = new Set(selectedIds);
+  const summary = h('summary', {});
+  const update = () => {
+    const names = state.sports.filter((sp) => chosen.has(sp.id)).map((sp) => sp.name);
+    summary.textContent = names.length ? names.join(', ') : 'Choose sports…';
+  };
+  const list = h('div', { className: 'picker-list' }, state.sports.map((sp) => h('label', { className: 'picker-option' },
+    h('input', {
+      type: 'checkbox', checked: chosen.has(sp.id),
+      onchange: (e) => { if (e.target.checked) chosen.add(sp.id); else chosen.delete(sp.id); update(); },
+    }), sp.name)));
+  update();
+  return { el: h('details', { className: 'sport-picker' }, summary, list), value: () => [...chosen] };
 }
 
 // ---------- notify ----------
@@ -203,6 +213,41 @@ function saveExpanded() {
   try { localStorage.setItem('wr-expanded-sports', JSON.stringify([...expandedSports])); } catch { /* ignore */ }
 }
 
+const SEASON_KEYS = ['fall', 'winter', 'spring'];
+const SEASON_NAMES = { fall: 'Fall', winter: 'Winter', spring: 'Spring' };
+
+// ---------- school season dates ----------
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function monthDayPicker(id, value, label) {
+  const [m, d] = value.split('-').map(Number);
+  const month = h('select', { id: `${id}-m`, ariaLabel: `${label} month` });
+  MONTHS.forEach((name, i) => month.append(new Option(name, String(i + 1).padStart(2, '0'), false, i + 1 === m)));
+  const day = h('input', { id: `${id}-d`, type: 'number', min: 1, max: 31, value: d, inputMode: 'numeric', ariaLabel: `${label} day` });
+  return { el: h('span', { className: 'month-day' }, month, day), value: () => `${month.value}-${String(day.value).padStart(2, '0')}` };
+}
+
+async function loadSeasonDates() {
+  const { ranges, currentSeasons } = await api('/api/admin/season-dates');
+  const box = $('season-dates');
+  const pickers = {};
+  box.replaceChildren(...SEASON_KEYS.map((key) => {
+    const start = monthDayPicker(`sd-${key}-start`, ranges[key].start, `${SEASON_NAMES[key]} start`);
+    const end = monthDayPicker(`sd-${key}-end`, ranges[key].end, `${SEASON_NAMES[key]} end`);
+    pickers[key] = { start, end };
+    return h('div', { className: 'season-date-row' },
+      h('strong', {}, SEASON_NAMES[key], currentSeasons.includes(key) ? h('span', { className: 'pill ok', style: 'margin-left:6px' }, 'Now') : null),
+      start.el, h('span', { className: 'muted' }, 'to'), end.el);
+  }));
+  $('season-dates-save').onclick = () => act(async () => {
+    const body = { ranges: Object.fromEntries(SEASON_KEYS.map((k) => [k, { start: pickers[k].start.value(), end: pickers[k].end.value() }])) };
+    await api('/api/admin/season-dates', { method: 'PUT', body });
+    flash('Season dates saved.', 'ok');
+    await loadSeasonDates();
+    await loadSports();
+    renderSports();
+  });
+}
+
 const fmtDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 function renderSports() {
@@ -215,9 +260,6 @@ function renderSports() {
   const refresh = async () => { await loadSports(); renderSports(); };
 
   for (const sport of state.sports) {
-    const seasonLabel = h('input', { placeholder: 'Label (e.g. Fall 2026)', maxLength: 50 });
-    const seasonStart = h('input', { type: 'date', required: true, title: 'Start date' });
-    const seasonEnd = h('input', { type: 'date', required: true, title: 'End date' });
     const coachName = h('input', { placeholder: 'Coach name' , maxLength: 80 });
     const coachEmail = h('input', { type: 'email', placeholder: 'coach@school.org (optional)' });
 
@@ -236,6 +278,8 @@ function renderSports() {
         h('span', { className: 'chevron', ariaHidden: 'true' }),
         h('h3', {}, sport.name),
         h('span', { className: `pill ${sport.inSeason ? 'ok' : ''}` }, sport.inSeason ? 'In season' : 'Out of season'),
+        h('span', { className: `pill ${sport.seasons.length ? '' : 'warn'}` },
+          sport.seasons.length ? sport.seasons.map((x) => SEASON_NAMES[x]).join(' · ') : 'No season set'),
         h('span', { className: `pill ${sport.gender ? '' : 'warn'}` },
           sport.gender === 'boys' ? 'Boys' : sport.gender === 'girls' ? 'Girls' : 'Boys/Girls not set'),
         h('span', { className: 'spacer' }),
@@ -243,6 +287,7 @@ function renderSports() {
       ),
       h('div', { className: 'sport-actions' },
         // Boys/girls decides which Hall of Fame list this sport's students appear in.
+        h('span', { className: 'muted small' }, 'Hall of Fame list:'),
         h('div', { className: 'segmented', role: 'radiogroup', ariaLabel: `${sport.name}: boys or girls` },
           ['boys', 'girls'].map((g) => h('button', {
             type: 'button', role: 'radio', ariaChecked: String(sport.gender === g),
@@ -272,39 +317,16 @@ function renderSports() {
       ),
 
       h('div', { className: 'sub' }, 'Seasons'),
-      sport.seasons.length
-        ? h('ul', { className: 'list' }, sport.seasons.map((se) => h('li', {},
-          h('span', {},
-            se.label ? h('strong', {}, `${se.label}: `) : null,
-            `${fmtDate(se.startDate)} – ${fmtDate(se.endDate)} `,
-            se.current ? h('span', { className: 'pill ok' }, 'Current') : null),
-          h('span', {},
-            h('button', { className: 'link', onclick: () => act(async () => {
-              const startDate = prompt('Start date (YYYY-MM-DD)', se.startDate);
-              if (!startDate) return;
-              const endDate = prompt('End date (YYYY-MM-DD)', se.endDate);
-              if (!endDate) return;
-              await api(`/api/admin/seasons/${se.id}`, { method: 'PUT', body: { label: se.label, startDate, endDate } });
-              await refresh();
-            }) }, 'Edit'),
-            h('button', { className: 'link danger', onclick: () => act(async () => {
-              if (!confirm('Delete this season?')) return;
-              await api(`/api/admin/seasons/${se.id}`, { method: 'DELETE' });
-              await refresh();
-            }) }, 'Delete')),
-        )))
-        : h('p', { className: 'muted small' }, 'No seasons yet.'),
-      h('form', {
-        className: 'inline-form',
-        onsubmit: (e) => act(async () => {
-          e.preventDefault();
-          await api(`/api/admin/sports/${sport.id}/seasons`, {
-            method: 'POST',
-            body: { label: seasonLabel.value, startDate: seasonStart.value, endDate: seasonEnd.value },
-          });
-          await refresh();
-        }),
-      }, seasonLabel, seasonStart, seasonEnd, h('button', { type: 'submit' }, 'Add Season')),
+      // Fall / Winter / Spring: any combination (e.g. Cheerleading is Fall and Winter).
+      h('div', { className: 'segmented', role: 'group', ariaLabel: `${sport.name} seasons` },
+        SEASON_KEYS.map((key) => h('button', {
+          type: 'button', ariaPressed: String(sport.seasons.includes(key)),
+          onclick: () => act(async () => {
+            const next = sport.seasons.includes(key) ? sport.seasons.filter((x) => x !== key) : [...sport.seasons, key];
+            await api(`/api/admin/sports/${sport.id}/seasons`, { method: 'PUT', body: { seasons: next } });
+            await refresh();
+          }),
+        }, SEASON_NAMES[key]))),
 
       h('div', { className: 'sub' }, 'Coaches'),
       sport.coaches.length
@@ -362,9 +384,9 @@ function renderStudents() {
   for (const s of shown) {
     const first = h('input', { value: s.firstName, maxLength: 50 });
     const last = h('input', { value: s.lastName, maxLength: 50 });
-    const sport = sportSelect(s.sportId);
+    const sport = sportPicker(s.sportIds || []);
     body.append(h('tr', {},
-      h('td', {}, first), h('td', {}, last), h('td', {}, sport),
+      h('td', {}, first), h('td', {}, last), h('td', {}, sport.el),
       h('td', {}, String(s.signInCount)),
       h('td', { className: 'small' }, s.lastSignIn || '—'),
       h('td', { className: 'small' }, s.workout || '—'),
@@ -382,7 +404,7 @@ function renderStudents() {
         }) }, 'New Link'),
         h('button', { className: 'link', onclick: () => act(async () => {
           await api(`/api/admin/students/${s.id}`, {
-            method: 'PUT', body: { firstName: first.value, lastName: last.value, sportId: sport.value || null },
+            method: 'PUT', body: { firstName: first.value, lastName: last.value, sportIds: sport.value() },
           });
           flash(`Saved ${first.value} ${last.value}.`, 'ok');
           await loadStudents();
@@ -412,28 +434,8 @@ async function loadHistory() {
 }
 
 // ---------- import ----------
-// Default season dates for the current school year (July–June); adjust them on the page.
-(function fillDefaultSeasons() {
-  const now = new Date();
-  const y = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
-  const defaults = {
-    fall: [`Fall ${y}`, `${y}-08-17`, `${y}-11-15`],
-    winter: [`Winter ${y}–${String(y + 1).slice(2)}`, `${y}-11-16`, `${y + 1}-03-01`],
-    spring: [`Spring ${y + 1}`, `${y + 1}-03-02`, `${y + 1}-06-06`],
-  };
-  for (const [key, [label, start, end]] of Object.entries(defaults)) {
-    $(`imp-${key}-label`).value = label;
-    $(`imp-${key}-start`).value = start;
-    $(`imp-${key}-end`).value = end;
-  }
-})();
-
 function importBody(dryRun) {
-  const seasons = {};
-  for (const key of ['fall', 'winter', 'spring']) {
-    seasons[key] = { label: $(`imp-${key}-label`).value, startDate: $(`imp-${key}-start`).value, endDate: $(`imp-${key}-end`).value };
-  }
-  return { text: $('import-text').value, seasons, dryRun };
+  return { text: $('import-text').value, dryRun };
 }
 
 function renderImportResult({ dryRun, warnings, sports }) {

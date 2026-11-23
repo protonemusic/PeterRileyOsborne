@@ -123,6 +123,15 @@ function migrate(db) {
     db.exec('ALTER TABLE students ADD COLUMN workout_token TEXT');
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_students_token ON students(workout_token)');
+
+  // Boys/girls for each sport (for the Hall of Fame); existing sports get a guess from their name.
+  const sportCols = db.prepare('PRAGMA table_info(sports)').all().map((c) => c.name);
+  if (!sportCols.includes('gender')) {
+    db.exec("ALTER TABLE sports ADD COLUMN gender TEXT NOT NULL DEFAULT ''");
+    const { guessGender } = require('./stats');
+    const set = db.prepare('UPDATE sports SET gender = ? WHERE id = ?');
+    for (const sp of db.prepare('SELECT id, name FROM sports').all()) set.run(guessGender(sp.name), sp.id);
+  }
 }
 
 /** Run fn inside a transaction. */

@@ -23,6 +23,13 @@ button emails each sport's coaches a list of their athletes who signed in.
   - **Workouts:** upload the workout program (PDF or Word), preview every day, then make it active.
   - **Students:** fix names or sports, see where each student is in the program, open a student's
     workout page, or give them a new workout link.
+  - **Personal Bests:** every tested student's starting and current estimated 1 rep max for bench,
+    squat and deadlift, combined weight, weight increase and percent increase, filterable by sport,
+    with a totals row. Starting = first-ever test, Current = most recent; after one test only
+    Current is filled in. The totals percent is total increase ÷ total starting weight.
+  - **Hall of Fame** (button at the top): top 5 boys and top 5 girls by combined best lifts, with
+    the % increase for each lift. Boys/girls comes from the student's sport: set it with the
+    Boys/Girls toggle on each sport (sports with "Boys" or "Girls" in the name are set automatically).
   - **Email History:** what was sent and to whom.
   - **Users** (admins only): add people and choose their role. See below.
   - **My Account:** change your password.
@@ -61,6 +68,11 @@ running table's header includes "Plan", and each row has the drill and its plan.
 
 If a student's link is shared, use **New Link** on the Students tab; the old link stops working and
 they get the new QR code next time they sign in.
+
+## Light and dark mode
+
+Every page has a **Dark mode** switch at the top. It starts with the device's setting; once someone
+flips it, that choice is remembered on that device for every page until they flip it again.
 
 ## Accounts and roles
 

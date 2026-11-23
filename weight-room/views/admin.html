@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Weight Room Admin</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
   <main class="wrap wide">
@@ -16,6 +17,7 @@
           <div class="muted small" id="whoami"></div>
         </div>
         <div class="topbar-actions">
+          <a href="/hall-of-fame"><button type="button" tabindex="-1">Hall of Fame</button></a>
           <a href="/"><button type="button" tabindex="-1">Kiosk</button></a>
           <button type="button" id="logout">Log Out</button>
         </div>
@@ -27,6 +29,7 @@
         <button role="tab" data-view="sports" aria-selected="false">Sports, Seasons &amp; Coaches</button>
         <button role="tab" data-view="workouts" aria-selected="false">Workouts</button>
         <button role="tab" data-view="students" aria-selected="false">Students</button>
+        <button role="tab" data-view="bests" aria-selected="false">Personal Bests</button>
         <button role="tab" data-view="history" aria-selected="false">Email History</button>
         <button role="tab" data-view="users" aria-selected="false" hidden id="nav-users">Users</button>
         <button role="tab" data-view="account" aria-selected="false">My Account</button>
@@ -176,6 +179,30 @@
       </section>
 
       <!-- History -->
+      <section data-panel="bests" hidden>
+        <div class="card">
+          <h2>CHS Bulldog Personal Bests</h2>
+          <p>Below is the aggregate data of the 1 REP MAX change over time for students in the Bulldog Zero Period Weight Training class.</p>
+          <div class="field" style="max-width:320px">
+            <label for="pb-sport">Sport</label>
+            <select id="pb-sport"><option value="">All</option></select>
+          </div>
+          <div class="table-wrap">
+            <table class="data-grid">
+              <thead><tr><th scope="col">Student Name</th><th scope="col">Program Start Date</th><th scope="col">Most Recent Test Date</th><th class="num" scope="col">Starting Bench</th><th class="num" scope="col">Current Bench</th><th class="num" scope="col">Starting Squat</th><th class="num" scope="col">Current Squat</th><th class="num" scope="col">Starting Deadlift</th><th class="num" scope="col">Current Deadlift</th><th class="num" scope="col">Starting Combined Weight</th><th class="num" scope="col">Current Combined Weight</th><th class="num" scope="col">Weight Increase</th><th class="num" scope="col">Percent Increase</th></tr></thead>
+              <tbody id="pb-rows"></tbody>
+              <tfoot id="pb-foot"></tfoot>
+            </table>
+          </div>
+          <p class="muted small" style="margin-top:12px">
+            Weights are estimated 1 rep maxes in pounds (the weight lifted for 6 reps × 1.18), from the strength tests on the
+            first and last day of each program. Starting = the student's first test, Current = their most recent.
+            After only one test, just Current is filled in. The totals row adds up each column; its percent is the
+            total weight increase divided by the total starting weight of the students who have both.
+          </p>
+        </div>
+      </section>
+
       <section data-panel="history" hidden>
         <div class="card">
           <h2>Email History</h2>

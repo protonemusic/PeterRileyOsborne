@@ -65,6 +65,7 @@ const loaders = {
   sports: () => loadSports().then(renderSports),
   students: () => loadSports().then(loadStudents),
   history: loadHistory,
+  bests: () => loadSports().then(loadBests),
   users: loadUsers,
   workouts: loadPrograms,
   account: async () => {},
@@ -235,10 +236,22 @@ function renderSports() {
         h('span', { className: 'chevron', ariaHidden: 'true' }),
         h('h3', {}, sport.name),
         h('span', { className: `pill ${sport.inSeason ? 'ok' : ''}` }, sport.inSeason ? 'In season' : 'Out of season'),
+        h('span', { className: `pill ${sport.gender ? '' : 'warn'}` },
+          sport.gender === 'boys' ? 'Boys' : sport.gender === 'girls' ? 'Girls' : 'Boys/Girls not set'),
         h('span', { className: 'spacer' }),
         h('span', { className: 'muted small' }, coachCount),
       ),
       h('div', { className: 'sport-actions' },
+        // Boys/girls decides which Hall of Fame list this sport's students appear in.
+        h('div', { className: 'segmented', role: 'radiogroup', ariaLabel: `${sport.name}: boys or girls` },
+          ['boys', 'girls'].map((g) => h('button', {
+            type: 'button', role: 'radio', ariaChecked: String(sport.gender === g),
+            onclick: () => act(async () => {
+              await api(`/api/admin/sports/${sport.id}/gender`, { method: 'PUT', body: { gender: g } });
+              await refresh();
+            }),
+          }, g === 'boys' ? 'Boys' : 'Girls'))),
+        h('span', { className: 'spacer' }),
         h('button', {
           className: 'link',
           onclick: () => act(async () => {
@@ -560,6 +573,44 @@ $('program-save').addEventListener('click', () => act(async () => {
   $('program-result').replaceChildren();
   await loadPrograms();
 }));
+
+// ---------- personal bests ----------
+const fmtLb = (n) => (n == null ? '—' : n.toLocaleString());
+const fmtSigned = (n) => (n == null ? '—' : `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toLocaleString()}`);
+const fmtPct = (n) => (n == null ? '—' : `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(1)}%`);
+const fmtDay = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
+const changeClass = (n) => (n == null ? '' : n > 0 ? 'up' : n < 0 ? 'down' : '');
+
+async function loadBests() {
+  const sel = $('pb-sport');
+  const chosen = sel.value;
+  sel.replaceChildren(new Option('All', ''), ...state.sports.map((s) => new Option(s.name, s.id, false, String(s.id) === chosen)));
+  const { rows, totals } = await api(`/api/admin/personal-bests${sel.value ? `?sportId=${sel.value}` : ''}`);
+  const body = $('pb-rows');
+  body.replaceChildren();
+  if (!rows.length) {
+    body.append(h('tr', {}, h('td', { colSpan: 13, className: 'muted' }, 'No strength tests logged yet for this group.')));
+  }
+  const numCells = (r) => [
+    h('td', { className: 'num' }, fmtLb(r.starting_bench)), h('td', { className: 'num' }, fmtLb(r.current_bench)),
+    h('td', { className: 'num' }, fmtLb(r.starting_squat)), h('td', { className: 'num' }, fmtLb(r.current_squat)),
+    h('td', { className: 'num' }, fmtLb(r.starting_deadlift)), h('td', { className: 'num' }, fmtLb(r.current_deadlift)),
+    h('td', { className: 'num' }, fmtLb(r.startingCombined)), h('td', { className: 'num' }, fmtLb(r.currentCombined)),
+    h('td', { className: `num ${changeClass(r.increase)}` }, fmtSigned(r.increase)),
+    h('td', { className: `num ${changeClass(r.percent)}` }, fmtPct(r.percent)),
+  ];
+  for (const r of rows) {
+    body.append(h('tr', {},
+      h('th', { scope: 'row' }, r.name, r.sportName ? h('div', { className: 'small muted' }, r.sportName) : null),
+      h('td', {}, fmtDay(r.startDate)), h('td', {}, fmtDay(r.recentDate)),
+      numCells(r)));
+  }
+  $('pb-foot').replaceChildren(h('tr', {},
+    h('th', { scope: 'row' }, `Totals (${totals.students} student${totals.students === 1 ? '' : 's'})`),
+    h('td', {}, ''), h('td', {}, ''),
+    numCells(totals)));
+}
+$('pb-sport').addEventListener('change', () => act(loadBests));
 
 // ---------- users ----------
 const ROLE_LABELS = { admin: 'Admin', staff: 'Staff', kiosk: 'Kiosk' };

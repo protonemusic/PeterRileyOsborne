@@ -70,7 +70,8 @@ function parseImport(text) {
  */
 function applyImport(db, parsed, seasonDates, { dryRun = false } = {}) {
   const findSport = db.prepare('SELECT id, name FROM sports WHERE name = ? COLLATE NOCASE');
-  const insertSport = db.prepare('INSERT INTO sports (name) VALUES (?)');
+  const insertSport = db.prepare('INSERT INTO sports (name, gender) VALUES (?, ?)');
+  const { guessGender } = require('./stats');
   const findSeason = db.prepare('SELECT id FROM seasons WHERE sport_id = ? AND start_date = ? AND end_date = ?');
   const insertSeason = db.prepare('INSERT INTO seasons (sport_id, label, start_date, end_date) VALUES (?, ?, ?, ?)');
   const findCoach = db.prepare('SELECT id, email FROM coaches WHERE sport_id = ? AND name = ? COLLATE NOCASE');
@@ -84,7 +85,7 @@ function applyImport(db, parsed, seasonDates, { dryRun = false } = {}) {
     let sportId = findSport.get(sport.name)?.id ?? null;
     if (!sportId) {
       row.sportAdded = true;
-      if (!dryRun) sportId = Number(insertSport.run(sport.name).lastInsertRowid);
+      if (!dryRun) sportId = Number(insertSport.run(sport.name, guessGender(sport.name)).lastInsertRowid);
     }
     for (const key of sport.seasons) {
       const d = seasonDates[key];

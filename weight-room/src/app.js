@@ -9,6 +9,7 @@ const users = require('./users');
 const { parseImport, applyImport, SEASON_NAMES } = require('./importer');
 const QRCode = require('qrcode');
 const workouts = require('./workouts');
+const stats = require('./stats');
 const { parseProgramFile, label: dayLabel } = require('./programParser');
 
 const COOKIE = 'wr_session';
@@ -340,7 +341,7 @@ function createApp({ db, mailer, config }) {
   // Sports, with their seasons and coaches
   admin.get('/sports', (_req, res) => {
     const t = today();
-    const sports = db.prepare('SELECT id, name FROM sports ORDER BY name COLLATE NOCASE').all();
+    const sports = db.prepare('SELECT id, name, gender FROM sports ORDER BY name COLLATE NOCASE').all();
     const seasons = db.prepare(`SELECT id, sport_id AS sportId, label, start_date AS startDate,
       end_date AS endDate FROM seasons ORDER BY start_date`).all();
     const coaches = db.prepare('SELECT id, sport_id AS sportId, name, email FROM coaches ORDER BY name COLLATE NOCASE').all();
@@ -361,8 +362,9 @@ function createApp({ db, mailer, config }) {
   admin.post('/sports', (req, res) => {
     const name = cleanName(req.body?.name, 'Sport name');
     if (db.prepare('SELECT 1 FROM sports WHERE name = ? COLLATE NOCASE').get(name)) throw bad(`${name} already exists`);
-    const { lastInsertRowid } = db.prepare('INSERT INTO sports (name) VALUES (?)').run(name);
-    res.status(201).json({ id: Number(lastInsertRowid), name });
+    const gender = stats.guessGender(name);
+    const { lastInsertRowid } = db.prepare('INSERT INTO sports (name, gender) VALUES (?, ?)').run(name, gender);
+    res.status(201).json({ id: Number(lastInsertRowid), name, gender });
   });
 
   admin.put('/sports/:id', (req, res) => {
@@ -372,6 +374,15 @@ function createApp({ db, mailer, config }) {
     if (clash) throw bad(`${name} already exists`);
     if (db.prepare('UPDATE sports SET name = ? WHERE id = ?').run(name, id).changes === 0) throw notFound('Sport');
     res.json({ id, name });
+  });
+
+  // Boys or girls: decides which Hall of Fame list the sport's students appear in.
+  admin.put('/sports/:id/gender', (req, res) => {
+    const id = toId(req.params.id);
+    const gender = req.body?.gender;
+    if (!['boys', 'girls', ''].includes(gender)) throw bad('Choose boys or girls');
+    if (db.prepare('UPDATE sports SET gender = ? WHERE id = ?').run(gender, id).changes === 0) throw notFound('Sport');
+    res.json({ id, gender });
   });
 
   admin.delete('/sports/:id', (req, res) => {
@@ -693,6 +704,16 @@ function createApp({ db, mailer, config }) {
     res.json({ results });
   });
 
+  // ---------- Personal Bests / Hall of Fame ----------
+  admin.get('/personal-bests', (req, res) => {
+    const sportId = req.query.sportId ? toId(req.query.sportId, 'sport') : null;
+    res.json(stats.personalBests(db, { sportId }));
+  });
+
+  admin.get('/hall-of-fame', (_req, res) => {
+    res.json(stats.hallOfFame(db, { limit: 5 }));
+  });
+
   admin.get('/notifications', (_req, res) => {
     const rows = db.prepare(`SELECT id, sent_at AS sentAt, sport_name AS sportName, recipients,
       sign_in_count AS count FROM notifications ORDER BY sent_at DESC LIMIT 50`).all();
@@ -780,6 +801,7 @@ function createApp({ db, mailer, config }) {
   });
   app.get('/', page('index.html', ANYONE));
   app.get('/admin', page('admin.html', STAFF));
+  app.get('/hall-of-fame', page('hall-of-fame.html', STAFF));
   // "no-cache" = browsers may keep a copy but must check for a newer one each time,
   // so the kiosk iPad picks up new versions right after a deploy.
   app.use(express.static(path.join(__dirname, '..', 'public'), {

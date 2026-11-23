@@ -255,3 +255,19 @@ test('the school logos (light and dark) are served without a login (it appears o
     }
   } finally { await new Promise((r) => server.close(r)); }
 });
+
+test('reports use the stored 1 rep max (older tests without one are calculated the same way)', () => {
+  const { db, ids, student } = setupDb();
+  const s = student('Ava', ids.soccer);
+  const pid = db.prepare('SELECT id FROM programs').get().id;
+  const log = (day, date, items) => db.prepare(`INSERT INTO student_workouts (student_id, program_id, day_number, assigned_date, results)
+    VALUES (?, ?, ?, ?, ?)`).run(s, pid, day, date, JSON.stringify({ items }));
+  // Older save: weights only -> 100 x 1.18 = 118.
+  log(1, '2026-09-01', [{ done: true }, { sets: [{ weight: '100', reps: '6' }] }, { sets: [{ weight: '100', reps: '6' }] }, { sets: [{ weight: '100', reps: '6' }] }]);
+  // New save: the stored 1 rep max is what counts.
+  log(2, '2026-10-30', [{ sets: [{ weight: '110', reps: '6' }], oneRepMax: 130 }, { sets: [{ weight: '' }], oneRepMax: null }, { sets: [{ weight: '120', reps: '6' }], oneRepMax: 142 }]);
+  const [r] = stats.personalBests(db).rows;
+  assert.deepEqual([r.starting_bench, r.current_bench], [118, 130]);
+  assert.deepEqual([r.starting_squat, r.current_squat], [null, 118], 'squat skipped in the final test');
+  assert.deepEqual([r.starting_deadlift, r.current_deadlift], [118, 142]);
+});

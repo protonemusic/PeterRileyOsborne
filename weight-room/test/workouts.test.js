@@ -272,7 +272,15 @@ test('student dashboard: testing day, warm-up/cool-down, log weights and reps, s
     assert.equal(detail.results.warmup, true);
     assert.equal(detail.results.cooldown, true);
     assert.deepEqual(detail.results.items[0], { done: true });
-    assert.deepEqual(detail.results.items[1], { sets: [{ weight: '135', reps: '6' }] });
+    // The recorded result is the 1 rep max (135 x 1.18), worked out on the server.
+    assert.deepEqual(detail.results.items[1], { sets: [{ weight: '135', reps: '6' }], oneRepMax: 159 });
+    const saved = JSON.parse(t.db.prepare('SELECT results FROM student_workouts WHERE id = ?').get(testId).results);
+    assert.deepEqual(saved.items.slice(1).map((x) => x.oneRepMax), [159, 218, 266]);
+    // A 1 rep max sent from the browser is ignored.
+    const tampered = { items: [{ done: true }, { sets: [{ weight: '135', reps: '6' }], oneRepMax: 999 }] };
+    await t.phone('PUT', `/api/w/${token}/workouts/${testId}`, { results: tampered });
+    assert.equal(JSON.parse(t.db.prepare('SELECT results FROM student_workouts WHERE id = ?').get(testId).results).items[1].oneRepMax, 159);
+    await t.phone('PUT', `/api/w/${token}/workouts/${testId}`, { results: testResults, completed: true });
 
     // Day 2: Week 1 Monday weights.
     t.day('2026-11-17');
@@ -340,7 +348,7 @@ test('final testing day shows the first test as last time', async () => {
     const detail = (await t.phone('GET', `/api/w/${token}/workouts/${dash.workouts[0].id}`)).body.workout;
     assert.equal(detail.label, 'Final Strength Testing');
     assert.equal(detail.items[0].name, 'Bench Press');
-    assert.equal(detail.items[0].lastTime, '135 × 6');
+    assert.equal(detail.items[0].lastTime, '1 rep max: 159 lbs');
   } finally { await t.close(); }
 });
 

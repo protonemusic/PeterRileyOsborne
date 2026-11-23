@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Weight Room Admin</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
   <main class="wrap wide">
@@ -16,6 +17,7 @@
           <div class="muted small" id="whoami"></div>
         </div>
         <div class="topbar-actions">
+          <a href="/hall-of-fame"><button type="button" tabindex="-1">Hall of Fame</button></a>
           <a href="/"><button type="button" tabindex="-1">Kiosk</button></a>
           <button type="button" id="logout">Log Out</button>
         </div>
@@ -27,6 +29,7 @@
         <button role="tab" data-view="sports" aria-selected="false">Sports, Seasons &amp; Coaches</button>
         <button role="tab" data-view="workouts" aria-selected="false">Workouts</button>
         <button role="tab" data-view="students" aria-selected="false">Students</button>
+        <button role="tab" data-view="bests" aria-selected="false">Personal Bests</button>
         <button role="tab" data-view="history" aria-selected="false">Email History</button>
         <button role="tab" data-view="users" aria-selected="false" hidden id="nav-users">Users</button>
         <button role="tab" data-view="account" aria-selected="false">My Account</button>
@@ -62,8 +65,16 @@
       <!-- Sports -->
       <section data-panel="sports" hidden>
         <div class="card">
+          <h2>Season Dates</h2>
+          <p class="muted small">When Fall, Winter and Spring run at school, every year. Sports in the current season show as "In season".</p>
+          <div id="season-dates" class="season-dates"></div>
+          <button type="button" id="season-dates-save" style="margin-top:12px">Save Season Dates</button>
+        </div>
+
+        <div class="card">
           <div class="card-head"><h2>Sports</h2></div>
-          <p class="muted small">Students can pick any sport. Sports in season today are listed first, under "In season".</p>
+          <p class="muted small">Students can pick any sports (as many as they play). Sports in season today are listed first, under "In season".
+            Set each sport's seasons (Fall, Winter, Spring) and Boys/Girls by tapping it below.</p>
           <form class="inline-form" id="add-sport-form" style="margin-bottom:18px">
             <input id="new-sport" placeholder="New sport, e.g. Football" required maxlength="50">
             <button class="primary" type="submit">Add Sport</button>
@@ -75,35 +86,12 @@
           <summary><h2 style="display:inline">Import Sports &amp; Coaches</h2></summary>
           <p class="muted small" style="margin-top:12px">
             Paste a list with a season heading (Fall, Winter, Spring) above its sports and a "Head Coach:" line under
-            each sport. A coach line can include an email address. Sports, seasons and coaches already in the app
+            each sport. A sport listed under two seasons gets both. A coach line can include an email address. Sports, seasons and coaches already in the app
             are not added twice, so it's safe to import the same list again.
           </p>
           <div class="field">
             <label for="import-text">List</label>
             <textarea id="import-text" rows="12" placeholder="FALL&#10;Football&#10;Head Coach: Pat Jones&#10;&#10;WINTER&#10;Wrestling&#10;Head Coach: Sam Lee coach.lee@school.org"></textarea>
-          </div>
-          <div class="field">
-            <label>Season dates</label>
-            <div class="season-grid">
-              <div class="season-row">
-                <strong>Fall</strong>
-                <input id="imp-fall-label" maxlength="50" aria-label="Fall label">
-                <input id="imp-fall-start" type="date" aria-label="Fall start date">
-                <input id="imp-fall-end" type="date" aria-label="Fall end date">
-              </div>
-              <div class="season-row">
-                <strong>Winter</strong>
-                <input id="imp-winter-label" maxlength="50" aria-label="Winter label">
-                <input id="imp-winter-start" type="date" aria-label="Winter start date">
-                <input id="imp-winter-end" type="date" aria-label="Winter end date">
-              </div>
-              <div class="season-row">
-                <strong>Spring</strong>
-                <input id="imp-spring-label" maxlength="50" aria-label="Spring label">
-                <input id="imp-spring-start" type="date" aria-label="Spring start date">
-                <input id="imp-spring-end" type="date" aria-label="Spring end date">
-              </div>
-            </div>
           </div>
           <div class="row" style="gap:8px;flex-wrap:nowrap">
             <button type="button" id="import-preview" style="flex:0 0 auto">Preview</button>
@@ -176,6 +164,33 @@
       </section>
 
       <!-- History -->
+      <section data-panel="bests" hidden>
+        <div class="card">
+          <h2>CHS Bulldog Personal Bests</h2>
+          <p>Below is the aggregate data of the 1 REP MAX change over time for students in the Bulldog Zero Period Weight Training class.</p>
+          <div class="filter-row">
+            <div class="field">
+              <label for="pb-sport">Sport</label>
+              <select id="pb-sport"><option value="">All</option></select>
+            </div>
+            <a class="button-link" id="pb-export" href="/api/admin/personal-bests.csv" download>Export CSV</a>
+          </div>
+          <div class="table-wrap">
+            <table class="data-grid">
+              <thead><tr><th scope="col">Student Name</th><th scope="col">Program Start Date</th><th scope="col">Most Recent Test Date</th><th class="num" scope="col">Starting Bench</th><th class="num" scope="col">Current Bench</th><th class="num" scope="col">Starting Squat</th><th class="num" scope="col">Current Squat</th><th class="num" scope="col">Starting Deadlift</th><th class="num" scope="col">Current Deadlift</th><th class="num" scope="col">Starting Combined Weight</th><th class="num" scope="col">Current Combined Weight</th><th class="num" scope="col">Weight Increase</th><th class="num" scope="col">Percent Increase</th></tr></thead>
+              <tbody id="pb-rows"></tbody>
+              <tfoot id="pb-foot"></tfoot>
+            </table>
+          </div>
+          <p class="muted small" style="margin-top:12px">
+            Weights are estimated 1 rep maxes in pounds (the weight lifted for 6 reps × 1.18), from the strength tests on the
+            first and last day of each program. Starting = the student's first test, Current = their most recent.
+            After only one test, just Current is filled in. The totals row adds up each column; its percent is the
+            total weight increase divided by the total starting weight of the students who have both.
+          </p>
+        </div>
+      </section>
+
       <section data-panel="history" hidden>
         <div class="card">
           <h2>Email History</h2>

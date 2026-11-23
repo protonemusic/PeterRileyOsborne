@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hall of Fame</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <main class="wrap wide">
+    <div class="topbar">
+      <h1>Zero Period Weight Program Hall of Fame</h1>
+      <div class="topbar-actions">
+        <a class="button-link" href="/api/admin/hall-of-fame.csv" download>Export CSV</a>
+        <a href="/admin"><button type="button" tabindex="-1">Back to Admin</button></a>
+      </div>
+    </div>
+    <p class="muted">
+      The top 5 boys and top 5 girls by combined best Bench + Squat + Deadlift. Maxes are each student's best estimated
+      1 rep max (weight for 6 reps × 1.18); increases are from their first test to that best.
+    </p>
+    <div id="hof-msg" class="message" hidden></div>
+    <div id="hof-notset" class="message warn" hidden></div>
+
+    <section class="card">
+      <h2>Boys</h2>
+      <div class="table-wrap"><table class="data-grid" id="hof-boys"></table></div>
+    </section>
+    <section class="card">
+      <h2>Girls</h2>
+      <div class="table-wrap"><table class="data-grid" id="hof-girls"></table></div>
+    </section>
+  </main>
+  <script src="/hall-of-fame.js"></script>
+</body>
+</html>

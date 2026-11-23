@@ -64,19 +64,21 @@ function parseImport(text) {
 }
 
 /**
- * Apply a parsed import. `seasonDates` maps 'fall' etc. to { label, startDate, endDate }.
- * Existing sports, seasons (same dates) and coaches (same name) are reused, never duplicated.
+ * Apply a parsed import. Sports are matched by name (any capitalization) and never duplicated;
+ * seasons (Fall/Winter/Spring) and coaches (by name) are only added if missing.
  * With dryRun, nothing is written. Returns a summary per sport.
  */
-function applyImport(db, parsed, seasonDates, { dryRun = false } = {}) {
+function applyImport(db, parsed, { dryRun = false } = {}) {
+  const { guessGender } = require('./stats');
   const findSport = db.prepare('SELECT id, name FROM sports WHERE name = ? COLLATE NOCASE');
-  const insertSport = db.prepare('INSERT INTO sports (name) VALUES (?)');
-  const findSeason = db.prepare('SELECT id FROM seasons WHERE sport_id = ? AND start_date = ? AND end_date = ?');
-  const insertSeason = db.prepare('INSERT INTO seasons (sport_id, label, start_date, end_date) VALUES (?, ?, ?, ?)');
+  const insertSport = db.prepare('INSERT INTO sports (name, gender) VALUES (?, ?)');
+  const hasSeason = db.prepare('SELECT 1 FROM sport_seasons WHERE sport_id = ? AND season = ?');
+  const insertSeason = db.prepare('INSERT OR IGNORE INTO sport_seasons (sport_id, season) VALUES (?, ?)');
   const findCoach = db.prepare('SELECT id, email FROM coaches WHERE sport_id = ? AND name = ? COLLATE NOCASE');
   const findCoachByEmail = db.prepare("SELECT id FROM coaches WHERE sport_id = ? AND email = ? COLLATE NOCASE AND email <> ''");
   const insertCoach = db.prepare('INSERT INTO coaches (sport_id, name, email) VALUES (?, ?, ?)');
   const updateEmail = db.prepare('UPDATE coaches SET email = ? WHERE id = ?');
+  const LABEL = { fall: 'Fall', winter: 'Winter', spring: 'Spring', summer: 'Summer' };
 
   const summary = [];
   for (const sport of parsed.sports) {
@@ -84,14 +86,13 @@ function applyImport(db, parsed, seasonDates, { dryRun = false } = {}) {
     let sportId = findSport.get(sport.name)?.id ?? null;
     if (!sportId) {
       row.sportAdded = true;
-      if (!dryRun) sportId = Number(insertSport.run(sport.name).lastInsertRowid);
+      if (!dryRun) sportId = Number(insertSport.run(sport.name, guessGender(sport.name)).lastInsertRowid);
     }
     for (const key of sport.seasons) {
-      const d = seasonDates[key];
-      if (!d) continue;
-      if (sportId && findSeason.get(sportId, d.startDate, d.endDate)) continue;
-      row.seasonsAdded.push(d.label || key);
-      if (!dryRun) insertSeason.run(sportId, d.label || '', d.startDate, d.endDate);
+      if (key === 'summer') continue; // only Fall, Winter and Spring are tracked
+      if (sportId && hasSeason.get(sportId, key)) continue;
+      row.seasonsAdded.push(LABEL[key]);
+      if (!dryRun) insertSeason.run(sportId, key);
     }
     for (const c of sport.coaches) {
       const existing = sportId

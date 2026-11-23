@@ -5,24 +5,36 @@ their name and picking it from a list. An admin page shows who came in, and one 
 button emails each sport's coaches a list of their athletes who signed in.
 
 - **Kiosk** (`/`): set it up on an iPad at the door.
-  - **Sign Up:** first name, last name and current sport. Signing up also signs the student in
+  - **Sign Up:** first name, last name and their sports (as many as they play; in-season sports are
+    listed first). Signing up also signs the student in
     for their first day ("Sign-up Successful! You are now signed in for your first day!").
   - **Sign In:** type part of your name, tap it, tap **Sign In**. The sign-in time is saved.
-    Students can change their sport here when seasons change. Signing in twice on the same day
+    Their sports are shown; **Change** lets them update them. Signing in twice on the same day
     doesn't create a duplicate.
 - **Admin** (`/admin`, staff and admins only; kiosk accounts never see the Admin link):
   - **Sign-ins & Notify:** today's sign-ins (or any day), a preview of each coach's email,
     and the **Notify Coaches** button. Each sign-in is emailed only once, so you can press it
     daily, weekly, or whenever you like.
-  - **Sports, Seasons & Coaches:** add sports, give each one season dates, and add coaches.
+  - **Sports, Seasons & Coaches:** set when Fall, Winter and Spring run (once, for the whole school),
+    add sports, mark each one Fall / Winter / Spring (any combination) and Boys / Girls, and add coaches.
     Tap a sport to expand it. **Import Sports & Coaches** at the bottom takes a pasted list
     (season headings, sports, "Head Coach:" lines) and adds everything at once without duplicates.
     A coach's email is optional at first; coaches without one show **No email** and aren't emailed
     until you add it.
-    Students can pick any sport; the ones in season today are listed first under "In season".
+    Coach emails go to the coaches of every sport a student plays.
   - **Workouts:** upload the workout program (PDF or Word), preview every day, then make it active.
   - **Students:** fix names or sports, see where each student is in the program, open a student's
     workout page, or give them a new workout link.
+  - **Personal Bests:** every tested student's starting and current estimated 1 rep max for bench,
+    squat and deadlift, combined weight, weight increase and percent increase, filterable by sport,
+    with a totals row. Starting = first-ever test, Current = most recent; after one test only
+    Current is filled in. The totals percent is total increase ÷ total starting weight.
+    **Export CSV** downloads what's shown (the current sport filter, with the totals row).
+  - **Hall of Fame** (button at the top): top 5 boys and top 5 girls by combined best lifts, with
+    the % increase for each lift. Boys/girls comes from the student's sports: set it with the
+    Boys/Girls toggle on each sport (sports with "Boys" or "Girls" in the name are set automatically).
+    Sports left unset (e.g. coed) don't count; a student whose sports say both isn't listed.
+    **Export CSV** downloads both lists.
   - **Email History:** what was sent and to whom.
   - **Users** (admins only): add people and choose their role. See below.
   - **My Account:** change your password.
@@ -61,6 +73,11 @@ running table's header includes "Plan", and each row has the drill and its plan.
 
 If a student's link is shared, use **New Link** on the Students tab; the old link stops working and
 they get the new QR code next time they sign in.
+
+## Light and dark mode
+
+Every page has a **Dark mode** switch at the top. It starts with the device's setting; once someone
+flips it, that choice is remembered on that device for every page until they flip it again.
 
 ## Accounts and roles
 

@@ -17,8 +17,29 @@
   --stripe: #f1f1f1;
   color-scheme: light;
 }
+/* Dark theme: the device setting, unless the person picked a theme with the toggle
+   (saved as data-theme on <html> by theme.js). */
+:root[data-theme="dark"] {
+  --bg: #111418;
+  --surface: #1b2027;
+  --text: #e9edf2;
+  --muted: #9aa6b4;
+  --border: #2f3742;
+  --accent: #ff4d63;
+  --accent-text: #14060a;
+  --accent-soft: #3a1a20;
+  --ok: #4ade80;
+  --ok-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #33260a;
+  --danger: #f87171;
+  --shadow: none;
+  --stripe: #232a33;
+  color-scheme: dark;
+  --banner-text: #0b1a10;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #111418;
     --surface: #1b2027;
     --text: #e9edf2;
@@ -35,6 +56,7 @@
     --shadow: none;
     --stripe: #232a33;
     color-scheme: dark;
+    --banner-text: #0b1a10;
   }
 }
 
@@ -277,9 +299,8 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 /* Kiosk: notification bar at the top of the screen */
 .top-banner {
   position: sticky; top: 0; z-index: 20; text-align: center; font-weight: 700; font-size: 20px;
-  padding: 16px; background: var(--ok); color: #fff;
+  padding: 16px; background: var(--ok); color: var(--banner-text, #fff);
 }
-@media (prefers-color-scheme: dark) { .top-banner { color: #0b1a10; } }
 
 /* Kiosk: admin password prompt */
 dialog.prompt {
@@ -291,3 +312,100 @@ dialog.prompt .row { flex-wrap: nowrap; }
 
 .routine-steps { margin: 6px 0 10px; padding-left: 1.6em; display: grid; gap: 4px; }
 .routine-steps li { padding-left: 2px; }
+
+/* ---------- Site bar with the light/dark toggle (every page) ---------- */
+.site-bar {
+  display: flex; justify-content: flex-end; align-items: center;
+  padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top));
+}
+.theme-toggle {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px;
+  border-radius: 999px; font-weight: 600; font-size: 15px;
+}
+.theme-toggle .track {
+  width: 40px; height: 24px; border-radius: 999px; background: var(--border); position: relative; flex: 0 0 auto;
+  transition: background .15s;
+}
+.theme-toggle .track::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 30%); transition: transform .15s;
+}
+.theme-toggle[aria-checked="true"] .track { background: var(--accent); }
+.theme-toggle[aria-checked="true"] .track::after { transform: translateX(16px); }
+
+/* Boys/Girls toggle on each sport */
+.sport-actions { align-items: center; flex-wrap: wrap; gap: 8px; }
+.sport-actions .spacer { flex: 1; }
+.segmented { display: inline-flex; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; }
+.segmented button { border: none; border-radius: 0; min-height: 40px; padding: 6px 16px; background: var(--surface); }
+.segmented button + button { border-left: 1.5px solid var(--border); }
+.segmented button[aria-checked="true"] { background: var(--accent); color: var(--accent-text); }
+
+/* ---------- Data grids: Personal Bests, Hall of Fame ---------- */
+.data-grid { font-size: 15px; font-variant-numeric: tabular-nums; }
+.data-grid th, .data-grid td { white-space: nowrap; }
+.data-grid thead th { white-space: normal; vertical-align: bottom; min-width: 76px; }
+.data-grid .num { text-align: right; }
+.data-grid tbody tr:nth-child(even) { background: var(--stripe); }
+.data-grid tbody th { font-weight: 600; text-align: left; }
+.data-grid tfoot th, .data-grid tfoot td { font-weight: 700; border-top: 2px solid var(--text); border-bottom: none; }
+.data-grid .up { color: var(--ok); }
+.data-grid .down { color: var(--danger); }
+.data-grid .rank { color: var(--muted); font-weight: 600; margin-right: 6px; }
+.data-grid tbody th, .data-grid tfoot th {
+  text-transform: none; letter-spacing: normal; font-size: 15px; color: var(--text);
+}
+.data-grid tbody th .small { font-weight: 400; }
+/* Keep the name column visible while the wide grid scrolls sideways. */
+.data-grid tr > :first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.data-grid tbody tr:nth-child(even) > :first-child { background: var(--stripe); }
+
+/* A link that looks like a button (downloads) */
+.button-link {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px;
+  border: 1.5px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text);
+  font-weight: 600; text-decoration: none;
+}
+.button-link:hover { border-color: var(--accent); }
+.filter-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.filter-row .field { flex: 0 1 320px; margin-bottom: 0; }
+
+/* Sport checkboxes (sign-up / sign-in) */
+.sport-checks { border: none; padding: 0; margin: 0 0 18px; min-width: 0; }
+.sport-checks legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
+.sport-check-groups { display: grid; gap: 14px; }
+.sport-check-title { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+.sport-check-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.sport-check-group .sport-check-title { grid-column: 1 / -1; margin-bottom: 0; }
+.sport-check {
+  display: flex; align-items: center; gap: 12px; margin: 0; font-weight: 500; cursor: pointer;
+  border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; min-height: 52px;
+}
+.sport-check input { width: 24px; height: 24px; min-height: 0; flex: 0 0 auto; accent-color: var(--accent); }
+.sport-check:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.sports-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+
+/* Season toggles and school season dates */
+.segmented button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.season-dates { display: grid; gap: 10px; }
+.season-date-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.season-date-row > strong { min-width: 110px; }
+.month-day { display: inline-flex; gap: 6px; }
+.month-day select { width: auto; min-height: 44px; padding: 8px 10px; }
+.month-day input { width: 72px; min-height: 44px; padding: 8px 10px; }
+
+/* Students tab: pick several sports */
+.sport-picker { position: relative; min-width: 180px; }
+.sport-picker > summary {
+  cursor: pointer; list-style: none; border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 8px 30px 8px 10px; min-height: 40px; white-space: normal; max-width: 260px; position: relative;
+}
+.sport-picker > summary::after { content: '▾'; position: absolute; right: 10px; top: 8px; color: var(--muted); }
+.sport-picker > summary::-webkit-details-marker { display: none; }
+.picker-list {
+  margin-top: 4px; min-width: 220px; max-height: 320px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 6px;
+}
+.picker-option { display: flex; align-items: center; gap: 10px; font-weight: 400; padding: 8px; margin: 0; cursor: pointer; border-radius: 6px; }
+.picker-option:hover { background: var(--stripe); }
+.picker-option input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }

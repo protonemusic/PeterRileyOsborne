@@ -59,8 +59,11 @@ async function seed(t) {
   await t.login();
   const football = (await t.call('POST', '/api/admin/sports', { name: 'Football' })).body;
   const track = (await t.call('POST', '/api/admin/sports', { name: 'Track' })).body;
-  await t.call('POST', `/api/admin/sports/${football.id}/seasons`, { label: 'Fall', startDate: '2026-08-15', endDate: '2026-11-30' });
-  await t.call('POST', `/api/admin/sports/${track.id}/seasons`, { label: 'Spring', startDate: '2027-02-15', endDate: '2027-05-31' });
+  // School season dates for these tests: Fall runs to Nov 30, Spring from Mar 1.
+  await t.call('PUT', '/api/admin/season-dates', { ranges: {
+    fall: { start: '08-15', end: '11-30' }, winter: { start: '12-01', end: '02-28' }, spring: { start: '03-01', end: '05-31' } } });
+  await t.call('PUT', `/api/admin/sports/${football.id}/seasons`, { seasons: ['fall'] });
+  await t.call('PUT', `/api/admin/sports/${track.id}/seasons`, { seasons: ['spring'] });
   await t.call('POST', `/api/admin/sports/${football.id}/coaches`, { name: 'Coach Smith', email: 'smith@school.org' });
   return { football, track };
 }
@@ -314,9 +317,13 @@ test('season validation', async () => {
   const t = await setup();
   try {
     const { football } = await seed(t);
-    const r = await t.call('POST', `/api/admin/sports/${football.id}/seasons`, { startDate: '2026-12-01', endDate: '2026-11-01' });
-    assert.equal(r.status, 400);
-    assert.equal((await t.call('POST', `/api/admin/sports/${football.id}/seasons`, { startDate: '2026-02-30', endDate: '2026-03-01' })).status, 400);
+    assert.equal((await t.call('PUT', `/api/admin/sports/${football.id}/seasons`, { seasons: ['summer'] })).status, 400);
+    const ok = await t.call('PUT', `/api/admin/sports/${football.id}/seasons`, { seasons: ['winter', 'fall', 'fall'] });
+    assert.deepEqual(ok.body.seasons, ['fall', 'winter']);
+    assert.equal((await t.call('PUT', '/api/admin/season-dates', { ranges: { fall: { start: '13-01', end: '11-01' } } })).status, 400);
+    const dates = (await t.call('GET', '/api/admin/season-dates')).body;
+    assert.deepEqual(dates.ranges.fall, { start: '08-15', end: '11-30' });
+    assert.deepEqual(dates.currentSeasons, ['fall']); // Nov 16
     assert.equal((await t.call('POST', `/api/admin/sports/${football.id}/coaches`, { email: 'not-an-email' })).status, 400);
     assert.equal((await t.call('POST', `/api/admin/sports/${football.id}/coaches`, {})).status, 400);
   } finally { await t.close(); }
@@ -337,19 +344,16 @@ test('import endpoint, coaches without email, and editing a coach', async () => 
   const t = await setup();
   try {
     const { football } = await seed(t); // Football has Coach Smith with an email
-    const seasons = {
-      fall: { label: 'Fall 2026', startDate: '2026-08-17', endDate: '2026-11-30' },
-      winter: { label: 'Winter', startDate: '2026-12-01', endDate: '2027-03-01' },
-    };
-    assert.equal((await t.call('POST', '/api/admin/import', { text: 'WINTER\nWrestling', seasons: {} })).status, 400);
+    assert.equal((await t.call('POST', '/api/admin/import', { text: '' })).status, 400);
     const text = 'FALL\nFootball\nHead Coach: Chase Beach\nGirls Soccer\nHead Coach: Colin Hay\nWINTER\nWrestling\nHead Coach: Pete Machacek';
-    const preview = (await t.call('POST', '/api/admin/import', { text, seasons, dryRun: true })).body;
+    const preview = (await t.call('POST', '/api/admin/import', { text, dryRun: true })).body;
     assert.equal(preview.dryRun, true);
     assert.equal((await t.call('GET', '/api/admin/sports')).body.sports.length, 2);
-    const r = await t.call('POST', '/api/admin/import', { text, seasons });
+    const r = await t.call('POST', '/api/admin/import', { text });
     assert.equal(r.status, 200);
     const sports = (await t.call('GET', '/api/admin/sports')).body.sports;
-    assert.deepEqual(sports.map((s) => s.name), ['Football', 'Girls Soccer', 'Track', 'Wrestling']);
+    assert.deepEqual(sports.map((s) => [s.name, s.seasons]),
+      [['Football', ['fall']], ['Girls Soccer', ['fall']], ['Track', ['spring']], ['Wrestling', ['winter']]]);
 
     // Students sign in to Girls Soccer, which has a coach but no email yet.
     const soccer = sports.find((s) => s.name === 'Girls Soccer');
@@ -385,4 +389,83 @@ test('the kiosk Admin link asks for the password again', async () => {
     t.logout();
     assert.equal((await t.call('POST', '/api/confirm-password', { password: 'admin-pass' })).status, 401);
   } finally { await t.close(); }
+});
+
+test('students can play several sports; each sport\'s coaches hear about the sign-in', async () => {
+  const t = await setup();
+  try {
+    const { football, track } = await seed(t); // Football: Coach Smith
+    await t.call('POST', `/api/admin/sports/${track.id}/coaches`, { name: 'Coach Run', email: 'run@school.org' });
+    assert.equal((await t.call('POST', '/api/signup', { firstName: 'No', lastName: 'Sport', sportIds: [] })).status, 400);
+    const r = await t.call('POST', '/api/signup', { firstName: 'Ava', lastName: 'Two', sportIds: [track.id, football.id, football.id] });
+    assert.equal(r.status, 201);
+    assert.deepEqual(r.body.student.sports.map((x) => x.name), ['Football', 'Track']);
+    assert.equal(r.body.student.sportName, 'Football, Track');
+
+    const found = (await t.call('GET', '/api/students/search?q=ava')).body.students[0];
+    assert.deepEqual(found.sportIds.sort(), [football.id, track.id].sort());
+
+    const signIns = (await t.call('GET', '/api/admin/signins?date=2026-11-16')).body.signIns;
+    assert.equal(signIns[0].sportName, 'Football, Track');
+    assert.equal(signIns[0].notified, false);
+
+    const results = (await t.call('POST', '/api/admin/notify')).body.results;
+    assert.deepEqual(results.map((x) => [x.sportName, x.status]), [['Football', 'sent'], ['Track', 'sent']]);
+    assert.equal(t.sent.length, 2);
+    assert.ok(t.sent.every((m) => m.text.includes('Ava Two')));
+    assert.equal((await t.call('GET', '/api/admin/signins?date=2026-11-16')).body.signIns[0].notified, true);
+    assert.deepEqual((await t.call('POST', '/api/admin/notify')).body.results, [], 'nothing sent twice');
+
+    // Changing sports at the next sign-in; that sign-in goes only to the new sport's coaches.
+    t.clock.now = new Date('2026-11-17T22:00:00Z');
+    await t.login();
+    await t.call('POST', '/api/signin', { studentId: r.body.student.id, sportIds: [track.id] });
+    const results2 = (await t.call('POST', '/api/admin/notify')).body.results;
+    assert.deepEqual(results2.map((x) => x.sportName), ['Track']);
+
+    // Admin edits a student's sports.
+    assert.equal((await t.call('PUT', `/api/admin/students/${r.body.student.id}`, { firstName: 'Ava', lastName: 'Two', sportIds: [football.id] })).status, 200);
+    const list = (await t.call('GET', '/api/admin/students')).body.students;
+    assert.equal(list.find((s) => s.firstName === 'Ava').sportName, 'Football');
+  } finally { await t.close(); }
+});
+
+test('winter can run past New Year; sports list shows seasons', async () => {
+  const t = await setup();
+  try {
+    await t.login();
+    const sp = (await t.call('POST', '/api/admin/sports', { name: 'Wrestling' })).body;
+    await t.call('PUT', `/api/admin/sports/${sp.id}/seasons`, { seasons: ['winter'] });
+    for (const [iso, inSeason] of [['2026-12-20T20:00:00Z', true], ['2027-01-15T20:00:00Z', true], ['2027-03-15T20:00:00Z', false]]) {
+      t.clock.now = new Date(iso);
+      await t.login();
+      const s = (await t.call('GET', '/api/admin/sports')).body.sports[0];
+      assert.deepEqual(s.seasons, ['winter']);
+      assert.equal(s.inSeason, inSeason, iso);
+    }
+  } finally { await t.close(); }
+});
+
+test('older databases: single sports, dated seasons and sign-ins move to the new layout', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wr-')), 'db.sqlite');
+  let db = openDb(file);
+  // Simulate an older install: data only in the old columns/tables.
+  db.exec("DELETE FROM settings WHERE key IN ('migrated_student_sports', 'migrated_sport_seasons')");
+  db.exec("INSERT INTO sports (id, name) VALUES (1, 'Football'), (2, 'Cheerleading'), (3, 'Baseball')");
+  db.exec(`INSERT INTO seasons (sport_id, label, start_date, end_date) VALUES
+    (1, 'Fall 2026', '2026-08-17', '2026-11-15'), (2, 'Fall 2026', '2026-08-17', '2026-11-15'),
+    (2, 'Winter 2026–27', '2026-11-16', '2027-03-01'), (3, '', '2027-03-02', '2027-06-06')`);
+  db.exec("INSERT INTO students (id, first_name, last_name, sport_id, created_at) VALUES (1, 'Old', 'Timer', 1, '2026-09-01')");
+  db.exec("INSERT INTO sign_ins (id, student_id, sport_id, signed_in_at, notified_at) VALUES (1, 1, 1, '2026-09-02T15:00:00Z', '2026-09-03T00:00:00Z'), (2, 1, 1, '2026-09-04T15:00:00Z', NULL)");
+  db.close();
+  db = openDb(file);
+  assert.deepEqual(db.prepare('SELECT sport_id, season FROM sport_seasons ORDER BY sport_id, season').all().map((r) => `${r.sport_id}:${r.season}`),
+    ['1:fall', '2:fall', '2:winter', '3:spring']);
+  assert.deepEqual(db.prepare('SELECT student_id, sport_id FROM student_sports').all().map((r) => [r.student_id, r.sport_id]), [[1, 1]]);
+  assert.deepEqual(db.prepare('SELECT sign_in_id, notified_at FROM sign_in_sports ORDER BY sign_in_id').all().map((r) => [r.sign_in_id, Boolean(r.notified_at)]),
+    [[1, true], [2, false]]);
+  db.close();
 });

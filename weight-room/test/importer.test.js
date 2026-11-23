@@ -8,11 +8,6 @@ const { openDb } = require('../src/db');
 const { parseImport, applyImport } = require('../src/importer');
 
 const LIST = fs.readFileSync(path.join(__dirname, 'fixtures-sports.txt'), 'utf8');
-const DATES = {
-  fall: { label: 'Fall 2026', startDate: '2026-08-17', endDate: '2026-11-15' },
-  winter: { label: 'Winter 2026–27', startDate: '2026-11-16', endDate: '2027-03-01' },
-  spring: { label: 'Spring 2027', startDate: '2027-03-02', endDate: '2027-06-06' },
-};
 
 test('parses the school sports list', () => {
   const { sports, warnings } = parseImport(LIST);
@@ -44,26 +39,27 @@ test('import creates sports, seasons and coaches once', () => {
   const db = openDb(':memory:');
   db.prepare("INSERT INTO sports (name) VALUES ('football')").run(); // existing sport, different case
 
-  const preview = applyImport(db, parseImport(LIST), DATES, { dryRun: true });
+  const preview = applyImport(db, parseImport(LIST), { dryRun: true });
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sports').get().n, 1, 'dry run writes nothing');
   assert.equal(preview.filter((r) => r.sportAdded).length, 15);
 
-  applyImport(db, parseImport(LIST), DATES);
+  applyImport(db, parseImport(LIST));
   const count = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
   assert.equal(count('sports'), 16);
-  assert.equal(count('seasons'), 17); // Cheerleading has two
+  assert.equal(count('sport_seasons'), 17); // Cheerleading has two
   assert.equal(count('coaches'), 16);
-  const cheer = db.prepare(`SELECT se.label FROM seasons se JOIN sports s ON s.id = se.sport_id
-    WHERE s.name = 'Cheerleading' ORDER BY se.start_date`).all().map((r) => r.label);
-  assert.deepEqual(cheer, ['Fall 2026', 'Winter 2026–27']);
+  const cheer = db.prepare(`SELECT se.season FROM sport_seasons se JOIN sports s ON s.id = se.sport_id
+    WHERE s.name = 'Cheerleading' ORDER BY se.season`).all().map((r) => r.season);
+  assert.deepEqual(cheer, ['fall', 'winter']);
+  assert.equal(preview.find((r) => r.name === 'Cheerleading').seasonsAdded.join(','), 'Fall,Winter');
 
   // Importing again changes nothing.
-  const again = applyImport(db, parseImport(LIST), DATES);
+  const again = applyImport(db, parseImport(LIST));
   assert.ok(again.every((r) => !r.sportAdded && !r.seasonsAdded.length && !r.coachesAdded.length));
   assert.equal(count('coaches'), 16);
 
   // A later list with emails fills them in.
-  applyImport(db, parseImport('Tennis\nHead Coach: Amanda Lewis alewis@school.org'), DATES);
+  applyImport(db, parseImport('Tennis\nHead Coach: Amanda Lewis alewis@school.org'));
   assert.equal(db.prepare("SELECT email FROM coaches WHERE name = 'Amanda Lewis'").get().email, 'alewis@school.org');
   assert.equal(count('coaches'), 16);
 });

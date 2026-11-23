@@ -293,8 +293,6 @@ textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3
 .day-preview > summary { cursor: pointer; }
 .day-preview .list { margin: 8px 0 0 12px; }
 
-.one-rm { margin-top: 4px; color: var(--muted); }
-.one-rm.has-value { color: var(--text); font-weight: 700; font-size: 16px; }
 
 /* Kiosk: notification bar at the top of the screen */
 .top-banner {
@@ -418,4 +416,11 @@ dialog.prompt .row { flex-wrap: nowrap; }
   .site-bar { gap: 8px; }
   .site-logo { height: 32px; }
   .theme-toggle { gap: 6px; padding: 4px 8px; font-size: 14px; }
+}
+
+/* Read-only calculated value (1 rep max on testing days), shaped like the inputs beside it. */
+.readonly-value {
+  display: flex; align-items: center; min-height: 48px; padding: 8px 10px; font-size: 18px; font-weight: 700;
+  border: 1.5px dashed var(--border); border-radius: 10px; background: transparent; color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
